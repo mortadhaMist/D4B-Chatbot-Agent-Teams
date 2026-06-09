@@ -142,7 +142,8 @@ console.log("SKIP_APPROVAL:", process.env.SKIP_APPROVAL === "true" ? "🚀 ENABL
 let telegramBot = null;
 
 // Import database
-const db = require('./database');
+const DatabaseClass = require('./database');
+const db = new DatabaseClass();
 
 const PUBLIC_DIR = './public';
 const DATA_DIR = path.join(__dirname, 'data');
@@ -1058,6 +1059,15 @@ server.listen(PORT, async () => {
   console.log(` Staff logs: http://localhost:${PORT}/log.html`);
   console.log(` Database viewer: http://localhost:${PORT}/database.html`);
   console.log(` Staff dashboard: http://localhost:${PORT}/dashboard-simple.html`);
+
+  try {
+    // Initialize database
+    await db.init();
+    console.log('✅ Database initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize database:', error);
+    process.exit(1);
+  }
 
   try {
     await initTelegramBot();

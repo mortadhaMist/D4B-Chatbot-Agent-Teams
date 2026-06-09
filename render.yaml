@@ -2,8 +2,9 @@ services:
   - type: web
     name: solaria-bot-v3
     runtime: node
-    startCommand: npm install --build-from-source && npm start
+    startCommand: npm start
     buildCommand: npm install
     envVars:
       - key: NODE_ENV
         value: production
+
