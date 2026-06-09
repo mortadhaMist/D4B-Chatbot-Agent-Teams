@@ -100,19 +100,33 @@ class KFCTelegramBot {
       return;
     }
 
+    if (!this.token) {
+      throw new Error('Cannot set up webhook without bot token');
+    }
+
     try {
       const botInfo = await this.bot.getMe();
       console.log(' Bot info:', botInfo);
       console.log(` Connected to Telegram as @${botInfo.username}`);
       
+      // Use Telegram API directly to manage webhooks
+      const telegramApi = 'https://api.telegram.org';
+      
       // First, delete any existing webhook
       try {
-        await this.bot.deleteWebhook();
-        console.log(' Deleted existing webhook');
-        // Wait a moment for the deletion to take effect
+        const deleteUrl = `${telegramApi}/bot${this.token}/deleteWebhook`;
+        const deleteResponse = await fetch(deleteUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ drop_pending_updates: true })
+        });
+        const deleteData = await deleteResponse.json();
+        console.log(' Webhook deletion result:', deleteData.ok ? '✅ Success' : '❌ Failed');
+        
+        // Wait a moment for deletion to take effect
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (deleteError) {
-        console.log(' No existing webhook to delete or deletion failed');
+        console.log(' Webhook deletion failed (may not exist):', deleteError.message);
       }
       
       // Set webhook URL
@@ -124,37 +138,53 @@ class KFCTelegramBot {
         throw new Error(`Webhook URL must use HTTPS. Got: ${webhookUrl}`);
       }
       
-      // Set webhook with explicit options
-      const webhookResult = await this.bot.setWebhook(webhookUrl, {
-        max_connections: 40,
-        allowed_updates: ['message', 'callback_query'],
-        drop_pending_updates: true // Clear any pending updates
+      // Set webhook using Telegram API
+      const setUrl = `${telegramApi}/bot${this.token}/setWebhook`;
+      const setResponse = await fetch(setUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: webhookUrl,
+          max_connections: 40,
+          allowed_updates: ['message', 'callback_query'],
+          drop_pending_updates: true
+        })
       });
       
-      console.log(` Webhook set result:`, webhookResult);
+      const setData = await setResponse.json();
+      console.log(` Webhook set result:`, setData.ok ? '✅ Success' : '❌ Failed');
+      
+      if (!setData.ok) {
+        throw new Error(`Telegram API error: ${setData.description}`);
+      }
       
       // Wait a moment for webhook to be fully set
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Verify webhook immediately
-      const webhookInfo = await this.bot.getWebhookInfo();
-      console.log(' Webhook verification:', {
-        url: webhookInfo.url,
-        has_custom_certificate: webhookInfo.has_custom_certificate,
-        pending_update_count: webhookInfo.pending_update_count,
-        last_error_date: webhookInfo.last_error_date,
-        last_error_message: webhookInfo.last_error_message,
-        max_connections: webhookInfo.max_connections
-      });
+      // Verify webhook
+      const verifyUrl = `${telegramApi}/bot${this.token}/getWebhookInfo`;
+      const verifyResponse = await fetch(verifyUrl);
+      const webhookData = await verifyResponse.json();
       
-      if (webhookInfo.url !== webhookUrl) {
-        throw new Error(`Webhook URL mismatch. Expected: ${webhookUrl}, Got: ${webhookInfo.url}`);
+      if (webhookData.ok && webhookData.result) {
+        console.log(' Webhook verification:', {
+          url: webhookData.result.url,
+          has_custom_certificate: webhookData.result.has_custom_certificate,
+          pending_update_count: webhookData.result.pending_update_count,
+          last_error_date: webhookData.result.last_error_date,
+          last_error_message: webhookData.result.last_error_message,
+          max_connections: webhookData.result.max_connections
+        });
+        
+        if (webhookData.result.url === webhookUrl) {
+          console.log(' ✅ Webhook setup completed successfully');
+        } else {
+          throw new Error(`Webhook URL mismatch. Expected: ${webhookUrl}, Got: ${webhookData.result.url}`);
+        }
       }
       
-      console.log(' Webhook setup completed successfully');
-      
     } catch (error) {
-      console.error(' Failed to setup webhook:', error.message);
+      console.error(' ❌ Failed to setup webhook:', error.message);
       console.error(' Full error:', error);
       console.log(' Server will continue running without Telegram bot');
       
