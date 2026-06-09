@@ -110,7 +110,7 @@ try {
       const userName = context.activity.from?.name || 'TeamsUser';
       // Forward user message to existing chat proxy
       try {
-        const resp = await fetch(`http://isotimic-generable-rhys.ngrok-free.dev/api/chat`, {
+        const resp = await fetch(`https://d4b-chatbot-agent-teams.onrender.com//api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -746,6 +746,14 @@ const server = http.createServer(async (req, res) => {
       res.end('Teams processing error');
       return;
     }
+  }
+
+  if (req.url === '/api/messages' && req.method === 'GET') {
+    console.log('Teams /api/messages: received GET request, returning method_not_allowed');
+    return sendJsonResponse(res, 405, {
+      error: 'method_not_allowed',
+      message: 'This endpoint accepts POST requests from Microsoft Teams only.'
+    });
   }
 
   const handled = await handleApi(req, res);
