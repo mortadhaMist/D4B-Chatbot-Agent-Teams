@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="https://www.clipartmax.com/png/small/47-474635_kfc-trinidad-tobago-kfc-logo-2017.png"  />
+      <title>Tableau de Bord KFC France</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #fff5f3 0%, #f8ece8 100%);
+      color: #1f1f1f;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .dashboard-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+    }
+
+    .header-luxury {
+      background: #D52B1E;
+      color: #ffffff;
+      padding: 30px 36px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      box-shadow: 0 24px 70px rgba(213, 43, 30, 0.2);
+      border-radius: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .header-luxury .logo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-family: 'Arial', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: #ffffff;
+      padding: 14px 20px;
+      background: rgba(0, 0, 0, 0.08);
+      border-radius: 18px;
+    }
+
+    .header-logo-img {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+      border-radius: 16px;
+      background: #ffffff;
+      padding: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+    }
+
+    .luxury-title {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+    }
+
+    .luxury-subtitle {
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 1rem;
+      margin-top: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 28px;
+      border: 2px solid rgba(213, 43, 30, 0.18);
+      box-shadow: 0 20px 50px rgba(213, 43, 30, 0.08);
+      text-align: center;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 26px 60px rgba(213, 43, 30, 0.12);
+    }
+
+    .stat-number {
+      font-size: 3rem;
+      font-weight: 800;
+      color: #D52B1E;
+      margin-bottom: 8px;
+    }
+
+    .stat-label {
+      color: #6b6b6b;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .dashboard-content {
+      background: #ffffff;
+      border-radius: 28px;
+      padding: 32px;
+      border: 1px solid rgba(213, 43, 30, 0.14);
+      box-shadow: 0 24px 70px rgba(213, 43, 30, 0.08);
+    }
+
+    .guest-management-section {
+      background: #fff5f3;
+      border-radius: 26px;
+      border: 1px solid rgba(213, 43, 30, 0.18);
+      padding: 30px;
+      margin: 30px 0;
+    }
+
+    .guest-management-section h3 {
+      color: #1f1f1f;
+      margin: 0;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      border-radius: 24px;
+      border: 1px solid rgba(213, 43, 30, 0.2);
+      background: #ffffff;
+      margin-top: 20px;
+    }
+
+    .log-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: transparent;
+    }
+
+    .log-table th {
+      background: #fff0ef;
+      color: #1f1f1f;
+      padding: 18px 16px;
+      text-align: left;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid rgba(213, 43, 30, 0.18);
+    }
+
+    .log-table td {
+      padding: 16px;
+      border-bottom: 1px solid rgba(213, 43, 30, 0.12);
+      color: #3b3b3b;
+    }
+
+    .log-table tr:hover {
+      background-color: rgba(213, 43, 30, 0.06);
+    }
+
+    .status-open {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #fddcd8;
+      color: #9e1915;
+      padding: 8px 14px;
+      border-radius: 18px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .status-done,
+    .status-approved {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #ffe8e5;
+      color: #94160d;
+      padding: 8px 14px;
+      border-radius: 18px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .status-pending {
+      background: #ffe8e5;
+      color: #94160d;
+      padding: 6px 12px;
+      border-radius: 18px;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+
+    .request-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #fff8f7;
+      border-left: 4px solid #D52B1E;
+      color: #3b3b3b;
+      padding: 16px 18px;
+      border-radius: 18px;
+      margin-bottom: 12px;
+      min-height: 60px;
+    }
+
+    .action-btn-small {
+      min-width: 44px;
+      min-height: 44px;
+      border: none;
+      border-radius: 14px;
+      background: #D52B1E;
+      color: #ffffff;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+    }
+
+    .action-btn-small:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(213, 43, 30, 0.22);
+      filter: brightness(1.03);
+    }
+
+    .approve-btn,
+    .refresh-btn,
+    .clear-btn,
+    .link-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 700;
+    }
+
+    .approve-btn,
+    .refresh-btn {
+      background: #D52B1E;
+      color: #ffffff;
+      border: none;
+      padding: 12px 20px;
+      font-size: 0.95rem;
+    }
+
+    .approve-btn:hover,
+    .refresh-btn:hover {
+      background: #b71d14;
+      transform: translateY(-1px);
+    }
+
+    .clear-btn {
+      background: #ffffff;
+      color: #D52B1E;
+      border: 2px solid #D52B1E;
+      padding: 12px 20px;
+      font-size: 0.95rem;
+    }
+
+    .clear-btn:hover {
+      background: #D52B1E;
+      color: white;
+      transform: translateY(-1px);
+    }
+
+    .link-button {
+      background: #ffffff;
+      color: #D52B1E;
+      padding: 12px 22px;
+      border: 2px solid #D52B1E;
+      text-decoration: none;
+    }
+
+    .link-button:hover {
+      background: #D52B1E;
+      color: white;
+    }
+
+    .server-status {
+      padding: 12px 16px;
+      border-radius: 18px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff5f3;
+      color: #94160d;
+      border: 1px solid rgba(213, 43, 30, 0.18);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #6b6b6b;
+    }
+
+    .empty-state h3 {
+      font-size: 1.75rem;
+      margin-bottom: 10px;
+      color: #D52B1E;
+    }
+
+    .empty-state p {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: #5f5f5f;
+    }
+
+    @media (max-width: 900px) {
+      .header-luxury {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard-container {
+        padding: 16px;
+      }
+    }
+
+    .request-text {
+      flex: 1;
+      font-size: 0.95em;
+      color: #d8dee9;
+    }
+
+    .request-done {
+      background: #111217;
+      opacity: 0.78;
+      border-left-color: #6c757d;
+    }
+
+    .action-btn-small {
+      min-width: 44px;
+      min-height: 44px;
+      border: none;
+      border-radius: 14px;
+      background: #ffd54f;
+      color: #111827;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+    }
+
+    .action-btn-small:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(255, 213, 79, 0.35);
+      filter: brightness(1.03);
+    }
+
+    .priority-badge {
+      background: #dc3545;
+      color: white;
+      font-size: 10px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .approve-btn,
+    .refresh-btn,
+    .clear-btn,
+    .link-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 600;
+    }
+
+    .approve-btn {
+      background: #D52B1E;
+      color: #ffffff;
+      border: none;
+      padding: 12px 18px;
+      font-size: 0.95rem;
+    }
+
+    .approve-btn:hover {
+      background: #B2221A;
+    }
+
+    .refresh-btn {
+      background: #D52B1E;
+      color: white;
+      border: none;
+      padding: 12px 22px;
+      font-size: 0.95rem;
+      margin: 0;
+    }
+
+    .refresh-btn:hover {
+      background: #B2221A;
+      transform: translateY(-1px);
+    }
+
+    .clear-btn {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      font-size: 0.95rem;
+    }
+
+    .clear-btn:hover {
+      background: #c82333;
+      transform: translateY(-1px);
+    }
+
+    .link-button {
+      background: #4a9eff;
+      color: white;
+      padding: 12px 22px;
+      text-decoration: none;
+      border: none;
+    }
+
+    .link-button:hover {
+      background: #3a8eef;
+    }
+
+    .server-status {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #a0a8b7;
+    }
+
+    .empty-state h3 {
+      font-size: 1.75rem;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+
+    .empty-state p {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: #adb5bd;
+    }
+
+    @media (max-width: 900px) {
+      .header-luxury {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard-container {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard-container">
+    <div class="header-luxury">
+      <div class="logo">
+        <img class="header-logo-img" src="https://www.clipartmax.com/png/middle/231-2311164_kentucky-fried-chicken-logo-kfc-logo-transparent-png.png" alt="KFC France Logo" />
+        <span>KFC FRANCE</span>
+      </div>
+      <div>
+        <h1 class="luxury-title">Tableau de Bord KFC France</h1>
+        <p class="luxury-subtitle">Système de Gestion pour Restaurants KFC</p>
+      </div>
+    </div>
+
+    <div id="dashboard" class="dashboard-content">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="total-requests">0</div>
+          <div class="stat-label">Total des Commandes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="open-requests">0</div>
+          <div class="stat-label">Commandes en Cours</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="completed-requests">0</div>
+          <div class="stat-label">Commandes Terminées</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="today-requests">0</div>
+          <div class="stat-label">Commandes Aujourd'hui</div>
+        </div>
+        <div class="stat-card">
+                      <div class="stat-number" id="pending-guests" style="font-weight: bold; color: #dc3545;">0</div>
+          <div class="stat-label">Clients en Attente</div>
+        </div>
+      </div>
+
+      <!-- Unified Guest Management Section -->
+      <div class="guest-management-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+          <h3 style="color: #f8f9fb; margin: 0; font-size: 1.1rem; font-weight: 700;">
+            Gestion des Clients & Commandes
+          </h3>
+          <button id="refresh-guests" class="refresh-btn">Actualiser</button>
+        </div>
+        <div class="table-container">
+          <table id="guests-table" class="log-table">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Table</th>
+                <th>Statut</th>
+                <th>Commandes</th>
+                <th>Dernière Activité</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="guests-tbody">
+              <tr>
+                <td colspan="6" style="text-align: center; color: #666; padding: 20px;">
+                  <div style="font-size: 18px; margin-bottom: 10px;"></div>
+                  <div style="font-weight: bold; color: #495057; margin-bottom: 5px;">Chargement des clients...</div>
+                  <div style="font-size: 12px; color: #6c757d;">Veuillez patienter pendant que nous récupérons les données.</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
+        <button type="button" id="clearLogsBtn" class="clear-btn">Effacer les logs</button>
+        <button type="button" href="/database.html" class="clear-btn">
+          Visionneuse KFC
+        </button>
+
+      </div>
+
+      <!-- LEGACY TABLE - REMOVED (no longer needed) -->
+      <!-- <div class="table-container" style="display: none;"> ... </div> -->
+
+      <div id="empty-state" class="empty-state" style="display:none;">
+        <h3> Aucune Demande Encore</h3>
+        <p>Quand les clients font des demandes, elles apparaîtront ici en temps réel.</p>
+      </div>
+    </div>
+  </div>
+
+  <audio id="notif-sound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
+  
+  <script>
+    // API Configuration
+    const API_BASE = window.location.origin;
+    console.log(' API Base URL:', API_BASE);
+    
+    // One-time initialization guard
+    if (window.__LOG_INITED) {
+      console.warn('LOG UI already initialized, skipping...');
+      throw new Error('LOG UI already initialized');
+    }
+    window.__LOG_INITED = true;
+    
+    // Version banner
+    console.log(' KFC France Dashboard v2.2 - Request Management Enabled');
+    
+    // Helper function to safely add event listeners
+    function on(el, ev, fn) {
+      const node = (typeof el === 'string') ? document.getElementById(el) : el;
+      if (node) node.addEventListener(ev, fn);
+      else console.debug('Skipped listener; element not found:', el);
+    }
+
+    let previousRequestCount = 0;
+    let previousRequestIds = [];
+    let isLoadingDash = false;
+
+    // Initialize dashboard on page load (SINGLE INITIALIZER)
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log(" Dashboard loading...");
+      loadGuestsAndRequests(); // Load unified guest management
+      setInterval(loadGuestsAndRequests, 5000); // Poll guests every 5s
+      
+      // Bind event listeners safely
+      on('refresh-guests', 'click', loadGuestsAndRequests);
+    });
+
+    // Legacy loadLog function - REMOVED (no longer needed)
+    // function loadLog() { ... }
+
+    function updateStats(requests, guests) {
+      const total = requests.length;
+      const open = requests.filter(row => (row.status || '').toUpperCase() === 'OPEN').length;
+      const completed = requests.filter(row => ['DONE', 'CLOSED', 'COMPLETED'].includes((row.status || '').toUpperCase())).length;
+      const today = requests.filter(row => {
+        const todayStr = new Date().toDateString();
+        const requestDate = new Date(row.createdAt || row.timestamp || row.created_at).toDateString();
+        return todayStr === requestDate;
+      }).length;
+      const pendingGuests = guests.filter(g => g.status === 'pending' || g.approved === false).length;
+
+      document.getElementById("total-requests").textContent = total;
+      document.getElementById("open-requests").textContent = open;
+      document.getElementById("completed-requests").textContent = completed;
+      document.getElementById("today-requests").textContent = today;
+      document.getElementById("pending-guests").textContent = pendingGuests;
+    }
+
+    function markDone(index) {
+      const logs = JSON.parse(localStorage.getItem("kfc_logs") || "[]");
+      if (logs[index]) {
+        const wasOpen = logs[index].status === "Open";
+        logs[index].status = wasOpen ? "Done" : "Open";
+        localStorage.setItem("kfc_logs", JSON.stringify(logs));
+        
+        // If request was marked as done, notify the guest
+        if (wasOpen && logs[index].status === "Done") {
+          notifyGuest(logs[index]);
+        }
+        
+        loadLog();
+      }
+    }
+
+    function notifyGuest(request) {
+      // Create notification message based on language
+      let message;
+      const guestName = request.guest || request.name;
+      const requestDetails = request.request_type || request.details;
+      const language = request.language || request.lang;
+      
+      if (language === "FR") {
+        message = `🛎️ Bonjour ${guestName}, votre demande de "${requestDetails}" est en cours de livraison à la table ${request.room}. N'hésitez pas si vous avez besoin d'autre chose !`;
+      } else if (language === "AR") {
+        message = `🛎️ مرحباً ${guestName}، طلبك "${requestDetails}" قيد التوصيل إلى طاولتك ${request.room}. لا تتردد إذا كنت بحاجة إلى أي شيء آخر!`;
+      } else {
+        message = `🛎️ Hello ${guestName}, your request for "${requestDetails}" is being delivered to table ${request.room}. Don't hesitate if you need anything else!`;
+      }
+      
+      // Save notification for the guest's chat session
+      const notificationKey = `guestNotification-${request.room}`;
+      localStorage.setItem(notificationKey, message);
+      
+    }
+
+    // Guest Approval Functions (legacy - kept for reference)
+    // async function loadPendingGuests() { ... } // REMOVED - now part of loadGuestsAndRequests()
+    
+    // Legacy request functions (removed - now unified)
+    // async function loadRequests() { ... } // REMOVED - now part of loadGuestsAndRequests()
+
+    async function approveGuest(sessionId) {
+      console.log('🔍 Approving guest session:', sessionId);
+      try {
+        const response = await fetch(`${window.location.origin}/api/guest-sessions/${sessionId}/approve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        console.log('Approve response:', result);
+        
+        if (result.success) {
+          // Show success message
+          alert(`Client ${result.session.name} (Table ${result.session.room}) a été approuvé !`);
+          
+          // Reload the unified guest management table and stats
+          await loadGuestsAndRequests();
+        } else {
+          alert("Échec de l'approbation. Veuillez réessayer.");
+        }
+      } catch (error) {
+        console.error("[GUEST-APPROVE] Error approving guest:", error);
+        
+        let errorMessage = "Erreur réseau. Vérifiez votre connexion et réessayez.";
+        if (error.name === 'AbortError') {
+          errorMessage = "Délai d'attente dépassé. Le serveur peut être lent ou inaccessible.";
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = "Impossible de contacter le serveur. Vérifiez que le serveur est démarré sur le port 8080.";
+        }
+        
+        alert(errorMessage);
+      }
+    }
+
+
+    function showNewRequestNotification(count) {
+      // Create a temporary notification
+      const notification = document.createElement("div");
+      notification.className = "notification";
+      notification.innerHTML = `
+        🆕 <strong>${count} nouvelle demande${count > 1 ? 's' : ''}</strong> reçue${count > 1 ? 's' : ''} !
+        <br><small>Assistance client requise</small>
+      `;
+      
+      document.body.appendChild(notification);
+      
+      // Remove after 4 seconds
+      setTimeout(() => {
+        notification.style.animation = "slideOut 0.5s ease-in";
+        setTimeout(() => notification.remove(), 500);
+      }, 4000);
+    }
+
+    // Unified Guest Management Function
+    // Server status tracking
+    let serverStatus = 'unknown';
+    let lastServerCheck = 0;
+    const SERVER_CHECK_INTERVAL = 30000; // 30 seconds
+
+    async function checkServerStatus() {
+      const now = Date.now();
+      if (now - lastServerCheck < SERVER_CHECK_INTERVAL) {
+        updateServerStatusIndicator(serverStatus);
+        return serverStatus;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/requests`, { 
+          method: 'GET',
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        serverStatus = response.ok ? 'online' : 'error';
+        lastServerCheck = now;
+        updateServerStatusIndicator(serverStatus);
+        return serverStatus;
+      } catch (error) {
+        console.warn('[SERVER-STATUS] Server check failed:', error.message);
+        serverStatus = 'offline';
+        lastServerCheck = now;
+        updateServerStatusIndicator(serverStatus);
+        return serverStatus;
+      }
+    }
+
+    function updateServerStatusIndicator(status) {
+      const statusElement = document.getElementById('server-status');
+      const iconElement = document.getElementById('status-icon');
+      const textElement = document.getElementById('status-text');
+      
+      if (!statusElement || !iconElement || !textElement) return;
+      
+      switch (status) {
+        case 'online':
+          statusElement.style.background = '#d4edda';
+          statusElement.style.color = '#155724';
+          statusElement.style.border = '1px solid #c3e6cb';
+          iconElement.textContent = '🟢';
+          textElement.textContent = 'Serveur en ligne';
+          break;
+        case 'offline':
+          statusElement.style.background = '#f8d7da';
+          statusElement.style.color = '#721c24';
+          statusElement.style.border = '1px solid #f5c6cb';
+          iconElement.textContent = '🔴';
+          textElement.textContent = 'Serveur hors ligne';
+          break;
+        case 'error':
+          statusElement.style.background = '#fff3cd';
+          statusElement.style.color = '#856404';
+          statusElement.style.border = '1px solid #ffeaa7';
+          iconElement.textContent = '🟡';
+          textElement.textContent = 'Erreur serveur';
+          break;
+        default:
+          statusElement.style.background = '#e2e3e5';
+          statusElement.style.color = '#383d41';
+          statusElement.style.border = '1px solid #d6d8db';
+          iconElement.textContent = '';
+          textElement.textContent = 'Vérification...';
+      }
+    }
+
+    function showServerError(tbody, error, retryFunction) {
+      const isConnectionRefused = error.message.includes('Failed to fetch') || 
+                                 error.message.includes('ERR_CONNECTION_REFUSED') ||
+                                 error.message.includes('ERR_NETWORK');
+      
+      const errorMessage = isConnectionRefused 
+        ? 'Le serveur n\'est pas accessible. Vérifiez que le serveur est démarré sur le port 8080.'
+        : 'Erreur de connexion au serveur. Veuillez réessayer.';
+      
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; padding: 30px;">
+            <div style="font-size: 24px; margin-bottom: 15px; color: #dc3545;"></div>
+            <div style="font-weight: bold; color: #dc3545; margin-bottom: 10px; font-size: 16px;">
+              Serveur non accessible
+            </div>
+            <div style="color: #6c757d; margin-bottom: 20px; font-size: 14px;">
+              ${errorMessage}
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+              <button onclick="${retryFunction}()" class="refresh-btn" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                Réessayer
+              </button>
+              <button onclick="location.reload()" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                Actualiser la page
+              </button>
+            </div>
+            <div style="margin-top: 15px; font-size: 12px; color: #adb5bd;">
+              Dernière vérification: ${new Date().toLocaleTimeString()}
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    async function loadGuestsAndRequests() {
+      if (isLoadingDash) {
+        console.log('[GUEST-MGMT] Already loading, skipping...');
+        return;
+      }
+      isLoadingDash = true;
+      
+      const tbody = document.getElementById('guests-tbody');
+      if (!tbody) {
+        console.error('[GUEST-MGMT] Table body not found: guests-tbody');
+        isLoadingDash = false;
+        return;
+      }
+      
+      console.log('[GUEST-MGMT] Loading guests and requests...');
+      
+      try {
+        // Check server status first
+        const serverStatus = await checkServerStatus();
+        if (serverStatus === 'offline') {
+          throw new Error('Server is offline');
+        }
+        
+        // Load both guest sessions and requests with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        
+        const [guestsRes, requestsRes] = await Promise.all([
+          fetch(`${API_BASE}/api/guest-sessions`, { signal: controller.signal }),
+          fetch(`${API_BASE}/api/requests`, { signal: controller.signal })
+        ]);
+        
+        clearTimeout(timeoutId);
+        
+        // Check if responses are ok
+        if (!guestsRes.ok) {
+          throw new Error(`Guest sessions API returned ${guestsRes.status}: ${guestsRes.statusText}`);
+        }
+        if (!requestsRes.ok) {
+          throw new Error(`Requests API returned ${requestsRes.status}: ${requestsRes.statusText}`);
+        }
+        
+        const guestsData = await guestsRes.json().catch(() => ({}));
+        const requestsData = await requestsRes.json().catch(() => ({}));
+        
+        console.log('[GUEST-MGMT] Guests:', guestsData.sessions);
+        console.log('[GUEST-MGMT] Requests:', requestsData.requests);
+        
+        const guests = guestsData.sessions || [];
+        const requests = requestsData.requests || [];
+        
+        // Group requests by sessionId
+        const requestsBySession = {};
+        requests.forEach(req => {
+          if (!requestsBySession[req.sessionId]) {
+            requestsBySession[req.sessionId] = [];
+          }
+          requestsBySession[req.sessionId].push(req);
+        });
+        
+        // Create unified guest rows
+        const rows = guests.map(guest => {
+          const guestRequests = requestsBySession[guest.id] || [];
+          const openRequests = guestRequests.filter(req => (req.status || '').toUpperCase() === 'OPEN');
+          const closedRequests = guestRequests.filter(req => (req.status || '').toUpperCase() !== 'OPEN');
+          const hasOpenRequests = openRequests.length > 0;
+          const lastActivity = guest.approvedAt || guest.createdAt || guest.submittedAt;
+          
+          // Status badge
+          let statusBadge = '';
+          if (guest.status === 'pending' || !guest.approved) {
+            statusBadge = '<span class="status-pending">En Attente</span>';
+          } else {
+            statusBadge = '<span class="status-approved">Approuvé</span>';
+          }
+          
+          // Requests display
+          let requestsDisplay = '';
+          if (hasOpenRequests) {
+            let requestList = openRequests.map(req => {
+              const priorityBadge = req.priority === 'PRIORITY' ? '<span class="priority-badge">PRIORITY</span>' : '';
+              return `<div class="request-item">
+                <span class="request-text">${req.text}</span>
+                ${priorityBadge}
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <button type="button" class="action-btn-small" onclick="closeReq('${req.id}')">✓</button>
+                  <button type="button" class="action-btn-small" style="background:#6c757d;" onclick="declineReq('${req.id}')">✕</button>
+                </div>
+              </div>`;
+            }).join('');
+
+            if (closedRequests.length > 0) {
+              requestList += closedRequests.map(req => {
+                const closedLabel = (req.status || '').toUpperCase() === 'CANCELLED' ? 'Annulé' : 'Terminé';
+                const statusClass = (req.status || '').toUpperCase() === 'CANCELLED' ? 'status-pending' : 'status-approved';
+                return `<div class="request-item request-done">
+                  <span class="request-text">${req.text}</span>
+                  <span class="${statusClass}">${closedLabel}</span>
+                </div>`;
+              }).join('');
+            }
+
+            requestsDisplay = `<div class="requests-list">${requestList}</div>`;
+          } else if (closedRequests.length > 0) {
+            requestsDisplay = `<div class="requests-list">
+              <div class="request-item request-done">
+                <span class="request-text">Toutes les commandes sont terminées.</span>
+                <span class="status-approved">Terminé</span>
+              </div>
+            </div>`;
+          } else {
+            requestsDisplay = '<span class="no-requests">Aucune commande</span>';
+          }
+          
+          // Action buttons
+          let actionButtons = '';
+          if (guest.status === 'pending' || !guest.approved) {
+            actionButtons = `<button type="button" class="action-btn approve-btn" onclick="approveGuest('${guest.id}')">Valider</button>`;
+          } else {
+            actionButtons = `<span class="approved-text">Client validé</span>`;
+          }
+          
+          return `
+            <tr class="guest-row ${hasOpenRequests ? 'has-requests' : ''}">
+              <td>
+                <div class="guest-info">
+                  <strong>${guest.name}</strong>
+                
+                </div>
+              </td>
+              <td><strong>${guest.room}</strong></td>
+              <td>${statusBadge}</td>
+              <td>${requestsDisplay}</td>
+              <td>${new Date(lastActivity).toLocaleString()}</td>
+              <td>${actionButtons}</td>
+            </tr>
+          `;
+        });
+        
+        if (guests.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" style="text-align: center; color: #adb5bd; padding: 20px;">
+                <div style="font-size: 18px; margin-bottom: 10px;"></div>
+                <div style="font-weight: bold; color: #f8f9fb; margin-bottom: 5px;">Aucun client enregistré</div>
+                <div style="font-size: 12px; color: #a0a8b7;">Les nouveaux clients apparaîtront ici après soumission.</div>
+              </td>
+            </tr>
+          `;
+        } else {
+          tbody.innerHTML = rows.join('');
+        }
+
+        updateStats(requests, guests);
+        console.log('[GUEST-MGMT] Table updated with', guests.length, 'guests');
+        
+      } catch (error) {
+        console.error('[GUEST-MGMT] Error loading guests and requests:', error);
+        
+        // Show appropriate error message based on error type
+        if (error.name === 'AbortError') {
+          showServerError(tbody, new Error('Request timeout - server may be slow or unreachable'), 'loadGuestsAndRequests');
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+          showServerError(tbody, error, 'loadGuestsAndRequests');
+        } else {
+          // Generic error
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" style="text-align: center; color: #dc3545; padding: 20px;">
+                <div style="font-size: 18px; margin-bottom: 10px;"></div>
+                <div style="font-weight: bold; color: #dc3545; margin-bottom: 5px;">Erreur de chargement</div>
+                <div style="font-size: 12px; color: #6c757d; margin-bottom: 10px;">${error.message}</div>
+                <button onclick="loadGuestsAndRequests()" class="refresh-btn" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                  Réessayer
+                </button>
+              </td>
+            </tr>
+          `;
+        }
+      } finally {
+        isLoadingDash = false;
+      }
+    }
+
+    async function closeReq(id) {
+      try {
+        const response = await fetch(`${API_BASE}/api/requests/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'DONE' }),
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+        }
+        
+        loadGuestsAndRequests(); // Refresh the unified table
+      } catch (error) {
+        console.error('[REQUEST-CLOSE] Error closing request:', error);
+        
+        let errorMessage = 'Erreur lors de la fermeture de la demande.';
+        if (error.name === 'AbortError') {
+          errorMessage = 'Délai d\'attente dépassé. Le serveur peut être lent ou inaccessible.';
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'Impossible de contacter le serveur. Vérifiez que le serveur est démarré.';
+        }
+        
+        alert(`${errorMessage}\n\nVeuillez réessayer.`);
+      }
+    }
+
+    async function declineReq(id) {
+      try {
+        const response = await fetch(`${API_BASE}/api/requests/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'CANCELLED' }),
+          signal: AbortSignal.timeout(5000)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+        }
+
+        loadGuestsAndRequests();
+      } catch (error) {
+        console.error('[REQUEST-DECLINE] Error declining request:', error);
+        let errorMessage = 'Erreur lors de l\'annulation de la demande.';
+        if (error.name === 'AbortError') {
+          errorMessage = 'Délai d\'attente dépassé. Le serveur peut être lent ou inaccessible.';
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'Impossible de contacter le serveur. Vérifiez que le serveur est démarré.';
+        }
+        alert(`${errorMessage}\n\nVeuillez réessayer.`);
+      }
+    }
+
+    // Legacy event listeners (removed - now unified)
+    // on('refresh-requests', 'click', loadRequests);
+    // document.addEventListener('DOMContentLoaded', loadRequests);
+
+    // Fonction de suppression des logs
+    on("clearLogsBtn", "click", async () => {
+      if (confirm("Effacer tous les logs et sessions clients ? Cette action est irréversible.")) {
+        try {
+          // Effacer les logs dans localStorage
+          localStorage.removeItem("kfc_logs");
+          
+          // Effacer les sessions clients sur le serveur
+          const response = await fetch(`${API_BASE}/api/guest-sessions/clear`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+          
+          if (response.ok) {
+            alert("Tous les logs et sessions clients ont été effacés avec succès !");
+          } else {
+            alert("Les logs ont été effacés localement, mais la suppression serveur a échoué.");
+          }
+          
+          // Recharger la page pour actualiser tout
+          location.reload();
+        } catch (error) {
+          console.error("Erreur lors de la suppression des données :", error);
+          alert("Les logs ont été effacés localement, mais la suppression serveur a échoué.");
+          location.reload();
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+

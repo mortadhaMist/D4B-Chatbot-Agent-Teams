@@ -1,0 +1,42 @@
+﻿[
+  {
+    "question": "Comment signaler une panne de caisse ?",
+    "answer": "Si le terminal de caisse est bloqué ou si les transactions ne passent plus, décrivez le message d'erreur et nous classerons l'incident comme prioritaire. Ce type d'incident est transmis au support POS / Aloha."
+  },
+  {
+    "question": "Mon terminal Aloha ne se connecte plus, que faire ?",
+    "answer": "Un incident de connexion Aloha est généralement traité par l'équipe menu management Aloha. Indiquez le code restaurant et le comportement observé pour déclencher un ticket prioritaire."
+  },
+  {
+    "question": "La connexion internet du restaurant est coupée.",
+    "answer": "Une coupure réseau est un incident critique. Précisez si le wifi, le réseau filaire ou les services de paiement sont impactés pour activer la prise en charge réseau immédiatement."
+  },
+  {
+    "question": "Comment demander une mise à jour du menu Red Biscuit ?",
+    "answer": "Pour une modification de contenu ou promotion sur Red Biscuit, précisez le restaurant, l'article à modifier et la date de publication souhaitée. Nous transmettrons la demande au lot Red Biscuit."
+  },
+  {
+    "question": "Quels sont les délais SLA pour un incident IT ?",
+    "answer": "Les incidents critiques sont traités sous 2 heures, les urgences sous 24 heures, les demandes moyennes sous 72 heures et les demandes faibles sous 7 jours. Le chatbot indiquera la priorité dès la classification."
+  },
+  {
+    "question": "Je ne peux plus imprimer les tickets cuisine.",
+    "answer": "Un problème d'impression est souvent lié au réseau ou au KDS. Donnez-nous le modèle de l'imprimante et le message d'erreur, et nous orienterons votre ticket vers l'équipe infrastructure."
+  },
+  {
+    "question": "Le système affiche une erreur de paiement carte.",
+    "answer": "Les erreurs de paiement sont des incidents urgents. Partagez le code d'erreur et le type de terminal pour que nous puissions déclencher un traitement prioritaire."
+  },
+  {
+    "question": "Comment obtenir de l'aide pour un accès Aloha ?",
+    "answer": "Pour un problème d'accès ou de login Aloha, précisez si le mot de passe est refusé ou si l'utilisateur est bloqué. Nous classifierons la demande et la transmettrons à l'équipe Aloha."
+  },
+  {
+    "question": "Comment mettre à jour les promotions sur la caisse ?",
+    "answer": "Les modifications de promotions sur la caisse sont traitées par le lot Menu Management. Indiquez le produit, la promotion et la période de diffusion souhaitée."
+  },
+  {
+    "question": "Que faire si le terminal n'affiche plus rien ?",
+    "answer": "Un écran noir ou une absence d'affichage est un incident critique. Nous priorisons ce cas sous P1 et notifierons immédiatement l'équipe support matériel."
+  }
+]

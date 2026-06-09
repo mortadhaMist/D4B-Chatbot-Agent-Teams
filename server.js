@@ -1,0 +1,1067 @@
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { URL } = require('url');
+const dotenv = require('dotenv');
+const KFCTelegramBot = require('./telegram-bot');
+const Jimp = require('jimp');
+
+const envPath = path.join(__dirname, '.env');
+if (!fs.existsSync(envPath)) {
+  const envTemplate = `MISTRAL_API_KEY=
+SKIP_APPROVAL=false
+ATERA_API_KEY=
+ATERA_API_URL=https://app.atera.com
+TELEGRAM_BOT_TOKEN=
+SERVER_URL=
+MICROSOFT_APP_ID=
+MICROSOFT_APP_PASSWORD=
+MICROSOFT_APP_TENANT_ID=
+`;
+  fs.writeFileSync(envPath, envTemplate, 'utf8');
+  console.log('📄 Created missing .env file with placeholders');
+}
+dotenv.config({ path: envPath });
+
+const PORT = process.env.PORT || 8080;
+const SYSTEM_PROMPT = '';
+
+let teamsAdapter = null;
+let teamsBotHandler = null;
+try {
+  const { BotFrameworkAdapter, TeamsActivityHandler } = require('botbuilder');
+  
+  // Sécurisation de la récupération des variables d'environnement
+  const microsoftAppId = process.env.MICROSOFT_APP_ID ? String(process.env.MICROSOFT_APP_ID).trim() : null;
+  const microsoftAppPassword = process.env.MICROSOFT_APP_PASSWORD ? String(process.env.MICROSOFT_APP_PASSWORD).trim() : null;
+  const microsoftAppTenantId = process.env.MICROSOFT_APP_TENANT_ID ? String(process.env.MICROSOFT_APP_TENANT_ID).trim() : null;
+
+  console.log('MICROSOFT_APP_ID loaded:', microsoftAppId ? '✅' : '❌');
+  console.log('MICROSOFT_APP_PASSWORD loaded:', microsoftAppPassword ? '✅' : '❌');
+  
+  if (microsoftAppId && microsoftAppPassword) {
+    // Configuration de l'adaptateur avec prise en charge du Tenant ID si présent
+    teamsAdapter = new BotFrameworkAdapter({ 
+      appId: microsoftAppId, 
+      appPassword: microsoftAppPassword,
+      channelAuthTenant: microsoftAppTenantId || undefined
+    });
+
+    teamsAdapter.onTurnError = async (context, error) => {
+      console.error('Teams adapter onTurnError:', {
+        message: error?.message || String(error),
+        name: error?.name,
+        statusCode: error?.statusCode || error?.status || null,
+        activityType: context?.activity?.type,
+        conversationId: context?.activity?.conversation?.id,
+        serviceUrl: context?.activity?.serviceUrl
+      });
+      if (error?.statusCode === 401 || error?.status === 401) {
+        console.error('Skipping onTurnError reply because the Teams connector is rejecting authentication.');
+        return;
+      }
+      try {
+        await context.sendActivity('Sorry, the Teams bot encountered an authentication error. Please verify the App ID and App Password.');
+      } catch (sendError) {
+        console.error('Failed to send onTurnError message:', sendError);
+      }
+    };
+    
+      // Create connector credentials and log token claims for debugging outbound auth
+      try {
+        const { MicrosoftAppCredentials } = require('botframework-connector');
+        const connectorCreds = new MicrosoftAppCredentials(microsoftAppId, microsoftAppPassword);
+        connectorCreds.getToken().then(t => {
+          try {
+            const token = typeof t === 'string' ? t : (t && t.accessToken ? t.accessToken : null);
+            if (token) {
+              const p = token.split('.')[1] || '';
+              const s = p.replace(/-/g, '+').replace(/_/g, '/');
+              const padded = s + '='.repeat((4 - s.length % 4) % 4);
+              const claims = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+              console.log('Connector token claims:', { aud: claims.aud, appid: claims.appid, iss: claims.iss });
+            } else {
+              console.log('Connector token: empty');
+            }
+          } catch (e) { console.warn('Failed to decode connector token', e); }
+        }).catch(err => console.warn('Failed to acquire connector token', err));
+      } catch (e) {
+        console.warn('Connector credentials unavailable:', e?.message || e);
+      }
+    teamsBotHandler = new TeamsActivityHandler();
+
+    teamsBotHandler.onMessage(async (context, next) => {
+      // Ensure the Teams service URL is trusted for connector auth
+      try {
+        const { MicrosoftAppCredentials } = require('botframework-connector');
+        if (context?.activity?.serviceUrl) {
+          MicrosoftAppCredentials.trustServiceUrl(context.activity.serviceUrl);
+        }
+      } catch (e) { console.warn('Failed to trust serviceUrl for Teams:', e); }
+
+      // --- TYPING ANIMATION ACTIVATION ---
+      try {
+        await context.sendActivity({ type: 'typing' });
+      } catch (typingError) {
+        console.warn('Failed to dispatch typing status indicator activity:', typingError);
+      }
+
+      const text = (context.activity && context.activity.text) ? context.activity.text : '';
+      const userName = context.activity.from?.name || 'TeamsUser';
+      // Forward user message to existing chat proxy
+      try {
+        const resp = await fetch(`http://isotimic-generable-rhys.ngrok-free.dev/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: text }],
+            sessionId: `teams-${context.activity.from?.id || Date.now()}`,
+            guestInfo: { name: userName }
+          })
+        });
+        const data = await resp.json();
+        const reply = data?.choices?.[0]?.message?.content || data?.error || 'No response from assistant';
+        await context.sendActivity(reply);
+      } catch (e) {
+        console.error('Teams->chat proxy error:', e);
+        await context.sendActivity('Sorry, an error occurred while processing your message.');
+      }
+      await next();
+    });
+    console.log('Teams integration enabled (botbuilder present)');
+  } else {
+    console.warn('Teams integration disabled: missing MICROSOFT_APP_ID or MICROSOFT_APP_PASSWORD');
+  }
+} catch (e) {
+  console.error('Teams integration failed to initialize:', e);
+}
+
+console.log("API KEY Loaded:", process.env.MISTRAL_API_KEY ? "✅" : "❌");
+console.log("SKIP_APPROVAL:", process.env.SKIP_APPROVAL === "true" ? "🚀 ENABLED (Auto-approval active)" : " DISABLED (Manual approval required)");
+
+let telegramBot = null;
+
+// Import database
+const db = require('./database');
+
+const PUBLIC_DIR = './public';
+const DATA_DIR = path.join(__dirname, 'data');
+const GUEST_SESSIONS_FILE = path.join(DATA_DIR, 'guest_sessions.json');
+const REQUESTS_FILE = path.join(DATA_DIR, 'requests.json');
+const KB_DIR = path.join(DATA_DIR, 'kb');
+
+// In-memory knowledge index: [{ filename, text }]
+let KNOWLEDGE = [];
+
+function ensureKbDir() {
+  if (!fs.existsSync(KB_DIR)) fs.mkdirSync(KB_DIR, { recursive: true });
+}
+
+function loadKnowledgeIndex() {
+  ensureKbDir();
+  KNOWLEDGE = [];
+  const files = fs.readdirSync(KB_DIR).filter(f => fs.statSync(path.join(KB_DIR, f)).isFile());
+  for (const f of files) {
+    try {
+      const p = path.join(KB_DIR, f);
+      const txt = fs.readFileSync(p, 'utf8');
+      KNOWLEDGE.push({ filename: f, text: txt });
+    } catch (e) {
+      // binary or unreadable, skip textual indexing
+    }
+  }
+  console.log(` Loaded ${KNOWLEDGE.length} knowledge files`);
+}
+
+function searchKnowledge(query, maxSnippets = 3) {
+  if (!query || KNOWLEDGE.length === 0) return '';
+  const q = String(query).toLowerCase();
+  const tokens = q.split(/\W+/).filter(Boolean);
+  if (tokens.length === 0) return '';
+
+  // Score documents by number of token occurrences and extract matching lines
+  const hits = [];
+  for (const doc of KNOWLEDGE) {
+    const lines = doc.text.split(/\r?\n/);
+    let score = 0;
+    const excerpts = [];
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i].toLowerCase();
+      let matched = false;
+      for (const t of tokens) {
+        if (t.length > 2 && l.includes(t)) { matched = true; score++; }
+      }
+      if (matched) excerpts.push(lines[i].trim());
+      if (excerpts.length >= 3) break;
+    }
+    if (score > 0) hits.push({ doc: doc.filename, score, excerpts });
+  }
+
+  hits.sort((a,b) => b.score - a.score);
+  const pieces = [];
+  for (let i = 0; i < Math.min(maxSnippets, hits.length); i++) {
+    const h = hits[i];
+    pieces.push(`From ${h.doc}: ${h.excerpts.slice(0,2).join(' | ')}`);
+  }
+  return pieces.join('\n');
+}
+
+// Initialize data directory and files
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(REQUESTS_FILE)) {
+  fs.writeFileSync(REQUESTS_FILE, JSON.stringify([], null, 2));
+  console.log(' Created requests.json file');
+}
+console.log(' Request store:', path.resolve(REQUESTS_FILE));
+
+// In-memory storage for guest sessions (fallback if file doesn't exist)
+let guestSessions = [];
+
+// Load existing guest sessions from file
+function loadGuestSessions() {
+  try {
+    if (fs.existsSync(GUEST_SESSIONS_FILE)) {
+      const data = fs.readFileSync(GUEST_SESSIONS_FILE, 'utf8');
+      guestSessions = JSON.parse(data);
+      console.log(` Loaded ${guestSessions.length} guest sessions from file`);
+    } else {
+      // Create the file if it doesn't exist
+      fs.writeFileSync(GUEST_SESSIONS_FILE, JSON.stringify([], null, 2));
+      console.log(' Created new guest sessions file');
+    }
+  } catch (error) {
+    console.error(' Error loading guest sessions:', error);
+    guestSessions = [];
+  }
+}
+
+// Save guest sessions to file
+function saveGuestSessions() {
+  try {
+    fs.writeFileSync(GUEST_SESSIONS_FILE, JSON.stringify(guestSessions, null, 2));
+    console.log(` Saved ${guestSessions.length} guest sessions to file`);
+  } catch (error) {
+    console.error(' Error saving guest sessions:', error);
+  }
+}
+
+// Load sessions on startup
+loadGuestSessions();
+// Load knowledge index from data/kb
+loadKnowledgeIndex();
+// Watch KB directory for changes and reload index (debounced)
+try {
+  let kbReloadTimer = null;
+  if (fs.existsSync(KB_DIR)) {
+    fs.watch(KB_DIR, { persistent: false }, (eventType, filename) => {
+      if (kbReloadTimer) clearTimeout(kbReloadTimer);
+      kbReloadTimer = setTimeout(() => {
+        console.log('KB directory changed, reloading index...');
+        loadKnowledgeIndex();
+      }, 500);
+    });
+  }
+} catch (e) {
+  console.warn('Failed to watch KB directory:', e);
+}
+
+const mimeTypes = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.wav': 'audio/wav',
+  '.mp4': 'video/mp4',
+  '.woff': 'application/font-woff',
+  '.ttf': 'application/font-ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.otf': 'application/font-otf',
+  '.wasm': 'application/wasm'
+};
+
+// Helper function to send JSON response
+function sendJsonResponse(res, statusCode, data) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data));
+}
+
+// Helper functions for JSON file operations
+function readJsonSafe(p) { 
+  try { 
+    return JSON.parse(fs.readFileSync(p, 'utf8')); 
+  } catch { 
+    return []; 
+  } 
+}
+
+function writeJsonSafe(p, obj) { 
+  try {
+    fs.writeFileSync(p, JSON.stringify(obj, null, 2)); 
+  } catch (e) {
+    console.error(`Error writing to ${p}:`, e);
+    throw e;
+  }
+}
+
+// Helper function to parse request body
+function parseRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+// --- Mistral proxy endpoint ---
+async function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try { resolve(JSON.parse(body || '{}')); }
+      catch (e) { reject(e); }
+    });
+    req.on('error', reject);
+  });
+}
+
+async function handleApi(req, res) {
+  try {
+    // Chat proxy
+    if (req.method === 'POST' && req.url === '/api/chat') {
+      if (!process.env.MISTRAL_API_KEY) return sendJsonResponse(res, 500, { error: 'Missing MISTRAL_API_KEY on server' });
+      const { messages = [], model, temperature = 0.4, sessionId, guestInfo, responseFormat } = await readJson(req).catch(e => ({}));
+      const modelName = model && model.toLowerCase().startsWith('mistral') ? model : 'mistral-medium-latest';
+
+      // Attach KB snippets
+      const lastUser = Array.isArray(messages) ? [...messages].reverse().find(m => m.role === 'user') : null;
+      const userText = lastUser ? (typeof lastUser.content === 'string' ? lastUser.content : JSON.stringify(lastUser.content)) : '';
+      const snippets = lastUser ? searchKnowledge(userText, 3) : '';
+
+      // Determine if we should force the KFC troubleshooting template (French)
+      let format = responseFormat || null;
+      const lower = String(userText || '').toLowerCase();
+      if (!format && (lower.includes('bsod') || lower.includes('écran bleu') || lower.includes('blue screen'))) format = 'kfc_troubleshoot_fr';
+
+      const outgoing = [];
+      if (snippets) outgoing.push({ role: 'system', content: `Relevant knowledge:\n${snippets}` });
+
+      // If requested, instruct the assistant to reply using the KFC-friendly French troubleshooting template
+      if (format === 'kfc_troubleshoot_fr') {
+        const guide = `Répondez en français en utilisant exactement le format suivant (ne rajoutez pas d'autres sections) :\n\n**Classification :**\n- Priorité : P1 / P2 / ...\n- Lot : Nom du lot\n\n**Étapes de dépannage (suivre dans l'ordre)**\n1. Titre de l'étape :\n- Action : description claire et courte\n- Vérifier : question binaire ou instruction précise\n- Question à renvoyer : une question courte que l'utilisateur doit répondre\n\n( répétez pour chaque étape )\n\n**Si les étapes ci‑dessus échouent**\n- Action : instructions pour ouvrir un ticket ou escalade\n\n**Contournements temporaires**\n- Liste courte des contournements\n\n**Checklist rapide à renvoyer (copier/coller)**\n- [ ] Item 1 - résultat : (Oui / Non / autre)\n- [ ] Item 2 - résultat : ...\n\n**Question pour l'utilisateur :**\nUne question claire demandant l'état actuel et toute info (codes d'erreur, photo).`;
+        outgoing.push({ role: 'system', content: guide });
+      }
+
+      // Append the original conversation messages
+      for (const m of messages) outgoing.push(m);
+
+      const resp = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.MISTRAL_API_KEY}` },
+        body: JSON.stringify({ model: modelName, messages: outgoing, temperature })
+      });
+      const data = await resp.json().catch(() => ({}));
+
+      // optional DB logging
+      if (resp.ok && guestInfo && Array.isArray(messages) && messages.length >= 1) {
+        try {
+          const guest = await db.getGuestByRoom(guestInfo.room).catch(() => null);
+          if (guest) await db.logConversation(guest.id, messages[messages.length - 1].content, data.choices?.[0]?.message?.content || '');
+        } catch (e) { console.warn('Conversation log failed', e); }
+      }
+
+      return res.writeHead(resp.ok ? 200 : (resp.status || 500), { 'Content-Type': 'application/json' }), res.end(JSON.stringify(data));
+    }
+
+    // Atera ticket proxy
+    if (req.method === 'POST' && req.url === '/api/atera') {
+      try {
+        if (!process.env.ATERA_API_KEY || !process.env.ATERA_API_URL) return sendJsonResponse(res, 500, { error: 'Missing ATERA_API_KEY or ATERA_API_URL on server' });
+        const body = await readJson(req);
+        console.log('[Atera] Incoming request payload:', body);
+        const ateraUrl = process.env.ATERA_API_URL.toLowerCase().includes('/api/v3/tickets') ? process.env.ATERA_API_URL : new URL('/api/v3/tickets', process.env.ATERA_API_URL).toString();
+        console.log('[Atera] Forwarding request to:', ateraUrl);
+        const problemLabel = body.category ? body.category : 'problème';
+        const subjectName = body.name || 'demandeur inconnu';
+        const subjectRoom = body.room || 'Restaurant inconnu';
+        const ateraSubject = `${subjectRoom} - ${problemLabel} - ${subjectName}`;
+        const descriptionLines = [
+          `Nom: ${body.name || 'Unknown'}`,
+          `Restaurant: ${body.room || 'Unknown'}`,
+          `Email: ${body.email || 'Unknown'}`,
+          `Catégorie: ${body.category || 'problème'}`,
+          `Priorité: ${body.priority || 'P3'}`,
+          `Service Lot: ${body.serviceLot || 'Lot 1 - Helpdesk / Service Desk'}`,
+          `Session ID: ${body.sessionId || 'N/A'}`,
+          '',
+          `${body.text || 'No additional details provided'}`
+        ];
+        
+        const priorityMap = { P1: 'Critical', P2: 'High', P3: 'Medium', P4: 'Low' };
+        const ateraPriority = priorityMap[body.priority] || 'Medium';
+        
+        const ateraPayload = {
+          TicketTitle: ateraSubject,
+          Description: descriptionLines.join('\n'),
+          TicketPriority: ateraPriority
+        };
+        
+        if (body.email) {
+          ateraPayload.EndUserEmail = body.email;
+          const nameParts = (body.name || 'Guest').split(' ');
+          ateraPayload.EndUserFirstName = nameParts[0] || 'Guest';
+          ateraPayload.EndUserLastName = nameParts.slice(1).join(' ') || 'User';
+        }
+        console.log('[Atera] Forwarding payload:', ateraPayload);
+        const aRes = await fetch(ateraUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-API-KEY': process.env.ATERA_API_KEY },
+          body: JSON.stringify(ateraPayload)
+        });
+        const text = await aRes.text();
+        let aData;
+        try {
+          aData = JSON.parse(text);
+        } catch (err) {
+          console.warn('[Atera] Failed to parse response as JSON:', text);
+          aData = { text, rawText: text };
+        }
+        console.log('[Atera] Response status:', aRes.status);
+        console.log('[Atera] Response body:', aData);
+        try {
+          const store = readJsonSafe(REQUESTS_FILE);
+          store.push({ id: `ATERA-${Date.now()}`, timestamp: new Date().toISOString(), ticket: aData?.id || aData?.ticketId || null, payload: body });
+          writeJsonSafe(REQUESTS_FILE, store);
+        } catch (e) {
+          console.warn('Failed to persist Atera request locally', e);
+        }
+        if (!aRes.ok) {
+          return sendJsonResponse(res, aRes.status, { error: aData?.error || aData?.message || aData?.text || 'Unknown Atera error', details: aData });
+        }
+        return res.writeHead(200, { 'Content-Type': 'application/json' }), res.end(JSON.stringify(aData));
+      } catch (err) {
+        console.error('[Atera] Exception:', err);
+        return sendJsonResponse(res, 500, { error: 'Atera proxy error', message: err.message });
+      }
+    }
+
+    // Image upload + enhanced analysis
+    if (req.method === 'POST' && req.url === '/api/upload-image') {
+      const body = await readJson(req);
+      const { filename = `img-${Date.now()}.jpg`, data } = body || {};
+      if (!data) return sendJsonResponse(res, 400, { error: 'Missing image data' });
+
+      const uploadsDir = path.join(__dirname, 'public', 'uploads');
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      const buffer = Buffer.from(data, 'base64');
+      const baseName = `${Date.now()}-${filename}`;
+      const outPath = path.join(uploadsDir, baseName);
+      fs.writeFileSync(outPath, buffer);
+
+      const result = { success: true, url: `/uploads/${baseName}`, filename: baseName };
+
+      try {
+        const img = await Jimp.read(buffer);
+        result.width = img.bitmap.width;
+        result.height = img.bitmap.height;
+        result.mime = img.getMIME ? img.getMIME() : null;
+        try {
+          const avg = img.clone().resize(1, 1);
+          const hex = avg.getPixelColor(0, 0);
+          const rgba = Jimp.intToRGBA(hex);
+          result.dominantColor = { r: rgba.r, g: rgba.g, b: rgba.b };
+          result.dominantColorHex = ((rgba.r << 16) + (rgba.g << 8) + rgba.b).toString(16).padStart(6, '0');
+        } catch (e) {
+          result.dominantColorError = String(e);
+        }
+
+        result.aspectRatio = (img.bitmap.width / Math.max(1, img.bitmap.height)).toFixed(2);
+        result.orientation = img.bitmap.width >= img.bitmap.height ? 'landscape' : 'portrait';
+
+        try {
+          const thumb = img.clone().resize(240, Jimp.AUTO);
+          const thumbName = `thumb-${baseName}`;
+          const thumbPath = path.join(uploadsDir, thumbName);
+          await thumb.quality(70).writeAsync(thumbPath);
+          result.thumbnail = `/uploads/${thumbName}`;
+        } catch (e) {
+          result.thumbnailError = String(e);
+        }
+
+        try {
+          const { createWorker } = require('tesseract.js');
+          const worker = createWorker({ logger: m => {} });
+          await worker.load();
+          try { await worker.loadLanguage('eng'); await worker.initialize('eng'); }
+          catch (e) {}
+          const { data: ocrData } = await worker.recognize(buffer).catch(e => ({ data: { text: '' } }));
+          result.ocrText = (ocrData && ocrData.text) ? String(ocrData.text).trim() : '';
+          await worker.terminate();
+        } catch (e) {
+          result.ocrError = String(e);
+        }
+
+        if (process.env.GOOGLE_VISION_API_KEY) {
+          try {
+            const gReq = {
+              requests: [
+                { image: { content: buffer.toString('base64') }, features: [{ type: 'LABEL_DETECTION', maxResults: 10 }, { type: 'TEXT_DETECTION', maxResults: 5 }] }
+              ]
+            };
+            const gv = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${process.env.GOOGLE_VISION_API_KEY}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(gReq)
+            });
+            const gvJson = await gv.json().catch(() => ({}));
+            const r0 = gvJson.responses && gvJson.responses[0] ? gvJson.responses[0] : {};
+            if (r0.labelAnnotations) result.labels = r0.labelAnnotations.map(l => ({ description: l.description, score: l.score }));
+            if (r0.textAnnotations && r0.textAnnotations[0]) result.googleText = r0.textAnnotations[0].description;
+            result.googleVisionRaw = r0;
+          } catch (e) {
+            result.googleVisionError = String(e);
+          }
+        }
+
+        const pieces = [];
+        pieces.push(`Size: ${result.width}x${result.height}`);
+        if (result.dominantColor) pieces.push(`Dominant color: rgb(${result.dominantColor.r},${result.dominantColor.g},${result.dominantColor.b})`);
+        if (result.ocrText && result.ocrText.length) pieces.push(`Contains text (${Math.min(200, result.ocrText.length)} chars): "${result.ocrText.slice(0,200).replace(/\n/g,' ')}${result.ocrText.length>200? '...' : ''}"`);
+        if (result.labels && result.labels.length) pieces.push(`Labels: ${result.labels.slice(0,4).map(l=>l.description).join(', ')}`);
+        result.analysis = pieces.join(' | ');
+
+        if (process.env.MISTRAL_API_KEY) {
+          try {
+            const modelName = 'mistral-medium-latest';
+            const promptSystem = `You are an assistant that judges whether an image is related to a user's question or context. Respond concisely. Return a short JSON object with keys: related (true/false), confidence (0-1), reason (short), summary (one-sentence), actions (array of suggested next actions).`;
+            const payload = {
+              model: modelName,
+              messages: [
+                { role: 'system', content: promptSystem },
+                { role: 'user', content: `Image metadata and OCR/text:\n${JSON.stringify({ filename: baseName, width: result.width, height: result.height, dominantColorHex: result.dominantColorHex, ocrText: result.ocrText || '', labels: result.labels || [] }, null, 2)}` }
+              ],
+              temperature: 0.2
+            };
+
+            const mResp = await fetch('https://api.mistral.ai/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.MISTRAL_API_KEY}` }, body: JSON.stringify(payload) });
+            const mJson = await mResp.json().catch(() => ({}));
+            result.mistralRaw = mJson;
+            const mText = mJson?.choices?.[0]?.message?.content || (typeof mJson === 'string' ? mJson : JSON.stringify(mJson));
+            result.mistralText = mText;
+            try {
+              result.mistral = JSON.parse(mText);
+            } catch (e) {
+              const jsStart = mText.indexOf('{');
+              const jsEnd = mText.lastIndexOf('}');
+              if (jsStart >= 0 && jsEnd > jsStart) {
+                try { result.mistral = JSON.parse(mText.slice(jsStart, jsEnd + 1)); } catch (ee) { result.mistralParseError = String(ee); }
+              } else {
+                result.mistralParseError = 'No JSON found in response';
+              }
+            }
+          } catch (e) {
+            result.mistralError = String(e);
+          }
+        }
+      } catch (e) {
+        console.warn('Image analysis failed:', e);
+        result.analysisError = String(e);
+      }
+
+      return sendJsonResponse(res, 200, result);
+    }
+
+    // Document upload for KB
+    if (req.method === 'POST' && req.url === '/api/upload-doc') {
+      const body = await readJson(req);
+      const { filename = `doc-${Date.now()}.txt`, data } = body || {};
+      if (!data) return sendJsonResponse(res, 400, { error: 'Missing file data' });
+      ensureKbDir(); const buffer = Buffer.from(data, 'base64'); const outPath = path.join(KB_DIR, `${Date.now()}-${filename}`); fs.writeFileSync(outPath, buffer);
+      try { const text = buffer.toString('utf8'); KNOWLEDGE.push({ filename: path.basename(outPath), text }); } catch (e) {}
+      return sendJsonResponse(res, 200, { success: true, path: `/data/kb/${path.basename(outPath)}` });
+    }
+
+    // List KB files
+    if (req.method === 'GET' && req.url === '/api/kb') {
+      ensureKbDir(); return sendJsonResponse(res, 200, { files: KNOWLEDGE.map(k => k.filename) });
+    }
+
+    // Get KB file content
+    if (req.method === 'GET' && req.url.startsWith('/api/kb/')) {
+      const parts = req.url.split('/'); const fname = decodeURIComponent(parts.slice(3).join('/')); const p = path.join(KB_DIR, fname);
+      if (!fs.existsSync(p)) return sendJsonResponse(res, 404, { error: 'not_found' });
+      const content = fs.readFileSync(p, 'utf8'); res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end(content);
+    }
+
+    return false; 
+  } catch (err) {
+    console.error('handleApi fatal error', err);
+    sendJsonResponse(res, 500, { error: 'server_error', details: String(err) });
+    return true;
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  console.log(`${req.method} ${req.url}`);
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-KEY');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
+  // Debugging: allow posting an outbound activity to a conversation using app credentials
+  if (req.method === 'POST' && req.url === '/debug/post') {
+    try {
+      const body = await readJson(req).catch(() => ({}));
+      const convoUrl = body.url;
+      const messageText = body.message || 'debug message';
+      if (!convoUrl) return sendJsonResponse(res, 400, { error: 'missing url in body' });
+      const { MicrosoftAppCredentials } = require('botframework-connector');
+      const appId = (process.env.MICROSOFT_APP_ID || '').trim();
+      const appPass = (process.env.MICROSOFT_APP_PASSWORD || '').trim();
+      if (!appId || !appPass) return sendJsonResponse(res, 500, { error: 'missing MICROSOFT_APP_ID or MICROSOFT_APP_PASSWORD' });
+      const creds = new MicrosoftAppCredentials(appId, appPass);
+      const tokenObj = await creds.getToken().catch(e => { throw e; });
+      const token = (tokenObj && (tokenObj.accessToken || tokenObj.token || tokenObj)) || null;
+      console.log('/debug/post will call', convoUrl, 'with token?', !!token);
+      const fetchRes = await fetch(convoUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ type: 'message', text: messageText }) });
+      const text = await fetchRes.text().catch(() => '');
+      const headersObj = {};
+      try { fetchRes.headers.forEach((v,k) => { headersObj[k] = v; }); } catch(e) { /* ignore */ }
+      return sendJsonResponse(res, fetchRes.status, { status: fetchRes.status, body: text, headers: headersObj, token_preview: token ? token.slice(0, 40) + '...' : null });
+    } catch (err) {
+      console.error('/debug/post failed', err);
+      return sendJsonResponse(res, 500, { error: String(err) });
+    }
+  }
+
+  // Telegram webhook endpoint
+  if (req.url === '/webhook') {
+    if (req.method === 'GET') {
+      return sendJsonResponse(res, 200, { status: 'Webhook endpoint active', bot_available: !!telegramBot });
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const update = await readJson(req);
+        if (!telegramBot) {
+          return sendJsonResponse(res, 500, { error: 'Telegram bot not initialized' });
+        }
+        telegramBot.processUpdate(update);
+        return sendJsonResponse(res, 200, { status: 'Webhook processed', bot_available: true });
+      } catch (error) {
+        console.error('❌ Telegram webhook error:', error);
+        return sendJsonResponse(res, 400, { error: 'Invalid webhook payload', details: String(error) });
+      }
+    }
+  }
+
+  // Teams messages endpoint
+  if (req.url === '/api/messages' && req.method === 'POST' && teamsAdapter && teamsBotHandler) {
+    try {
+      console.log('Teams /api/messages request received', {
+        authorization: !!req.headers.authorization,
+        contentType: req.headers['content-type'],
+        userAgent: req.headers['user-agent']
+      });
+      if (!res.status) {
+        res.status = function (code) {
+          this.statusCode = code;
+          return this;
+        };
+      }
+      if (!res.send) {
+        res.send = function (body) {
+          if (body !== undefined && body !== null) {
+            if (typeof body === 'object' && !Buffer.isBuffer(body)) {
+              if (!this.getHeader('Content-Type')) this.setHeader('Content-Type', 'application/json');
+              body = JSON.stringify(body);
+            }
+            this.write(body);
+          }
+          return this;
+        };
+      }
+      // Read the incoming activity first so we can trust its serviceUrl before processing
+      try {
+        const activity = await readJson(req).catch(() => null);
+        if (activity && activity.serviceUrl) {
+          try {
+            const { MicrosoftAppCredentials } = require('botframework-connector');
+            MicrosoftAppCredentials.trustServiceUrl(activity.serviceUrl);
+          } catch (e) { console.warn('Failed to trust incoming serviceUrl:', e); }
+        }
+        if (!activity) {
+          console.error('Teams /api/messages: invalid or empty activity body');
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end('Invalid activity payload');
+          return;
+        }
+        // Attach parsed body so adapter.parseRequest will use it instead of re-reading the stream
+        try { req.body = activity; } catch (e) { /* ignore */ }
+        return teamsAdapter.processActivity(req, res, async (context) => {
+          await teamsBotHandler.run(context);
+        });
+      } catch (innerErr) {
+        console.error('Error processing Teams activity:', innerErr);
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Teams processing error');
+        return;
+      }
+    } catch (e) {
+      console.error('Teams adapter processing failed:', {
+        message: e?.message || String(e),
+        name: e?.name,
+        statusCode: e?.statusCode || e?.status || null,
+        stack: e?.stack
+      });
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Teams processing error');
+      return;
+    }
+  }
+
+  const handled = await handleApi(req, res);
+  if (handled !== false) return;
+
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const pathname = url.pathname;
+
+  if (pathname.endsWith('.html') || pathname.endsWith('.js') || pathname.endsWith('.css')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+
+  // API Routes for guest sessions
+  if (pathname === '/api/guest-sessions' && req.method === 'POST') {
+    try {
+      const guestData = await parseRequestBody(req);
+      const newSession = {
+        id: 'GS-' + Date.now(),
+        ...guestData,
+        email: guestData.email || null,
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+        approved: false
+      };
+      
+      let guestRecord = null;
+      try {
+        const existingGuest = await db.getGuestByRoom(guestData.room);
+        if (!existingGuest) {
+          guestRecord = await db.createGuest(guestData.name, guestData.room, guestData.email || null, 'en');
+          console.log(` Guest added to database: ${guestRecord.name} (Room ${guestRecord.roomNumber || guestRecord.room_number})`);
+        } else {
+          guestRecord = existingGuest;
+          if (guestData.email && !existingGuest.email) {
+            await db.updateGuest(existingGuest.id, { email: guestData.email });
+            guestRecord.email = guestData.email;
+            console.log(` Updated guest email for existing guest: ${existingGuest.name}`);
+          }
+          console.log(` Guest already exists in database: ${existingGuest.name} (Room ${existingGuest.room_number})`);
+        }
+      } catch (dbError) {
+        console.error(' Error adding guest to database:', dbError);
+      }
+      
+      guestSessions.push(newSession);
+      saveGuestSessions();
+      
+      console.log(` New guest session created: ${newSession.name} (${newSession.room})`);
+      sendJsonResponse(res, 201, { success: true, sessionId: newSession.id, session: newSession, guest: guestRecord });
+      return;
+    } catch (error) {
+      console.error(' Error creating guest session:', error);
+      sendJsonResponse(res, 400, { success: false, error: 'Invalid request data' });
+      return;
+    }
+  }
+
+  if (pathname === '/api/guest-sessions' && req.method === 'GET') {
+    sendJsonResponse(res, 200, { success: true, sessions: guestSessions });
+    return;
+  }
+
+  if (pathname.startsWith('/api/guest-sessions/') && pathname.endsWith('/approve') && req.method === 'POST') {
+    const sessionId = pathname.split('/')[3];
+    const session = guestSessions.find(s => s.id === sessionId);
+    
+    if (session) {
+      const skipApproval = process.env.SKIP_APPROVAL === "true";
+      if (skipApproval) {
+        sendJsonResponse(res, 200, { success: true, session: { ...session, status: 'approved', approved: true } });
+        return;
+      }
+      
+      session.status = 'approved';
+      session.approved = true;
+      session.approvedAt = new Date().toISOString();
+      saveGuestSessions();
+      
+      sendJsonResponse(res, 200, { success: true, session });
+      return;
+    } else {
+      sendJsonResponse(res, 404, { success: false, error: 'Session not found' });
+      return;
+    }
+  }
+
+  if (pathname.startsWith('/api/guest-sessions/') && pathname.endsWith('/status') && req.method === 'GET') {
+    const sessionId = pathname.split('/')[3];
+    const session = guestSessions.find(s => s.id === sessionId);
+    
+    if (session) {
+      const skipApproval = process.env.SKIP_APPROVAL === "true";
+      if (skipApproval) {
+        sendJsonResponse(res, 200, { success: true, status: 'approved', approved: true });
+        return;
+      }
+      sendJsonResponse(res, 200, { success: true, status: session.status, approved: session.approved });
+      return;
+    } else {
+      sendJsonResponse(res, 404, { success: false, error: 'Session not found' });
+      return;
+    }
+  }
+
+  if (pathname === '/api/guest-sessions/clear' && req.method === 'POST') {
+    guestSessions = [];
+    saveGuestSessions();
+    sendJsonResponse(res, 200, { success: true, message: 'All guest sessions cleared' });
+    return;
+  }
+
+  // Request logging API endpoints
+  if (req.method === 'POST' && req.url === '/api/requests') {
+    try {
+      const body = await parseRequestBody(req);
+      let guest = null;
+      if (body.name && body.room) {
+        guest = await db.getGuestByRoom(body.room);
+        if (!guest) {
+          guest = await db.createGuest(body.name, body.room, body.email || null, body.lang || 'en');
+        } else if (body.email && !guest.email) {
+          await db.updateGuest(guest.id, { email: body.email });
+          guest.email = body.email;
+        }
+      }
+      
+      const items = readJsonSafe(REQUESTS_FILE);
+      const id = Date.now().toString();
+      const entry = {
+        id,
+        createdAt: new Date().toISOString(),
+        status: 'OPEN',
+        sessionId: body.sessionId || null,
+        name: body.name || 'Guest',
+        room: body.room || 'TBD',
+        email: body.email || null,
+        text: (body.text || '').slice(0, 1000),
+        category: body.category || 'General IT Support',
+        priority: body.priority || 'P4',
+        serviceLot: body.serviceLot || 'Lot 1 - Helpdesk / Service Desk',
+        slaDeadline: body.slaDeadline || null,
+        lang: body.lang || null
+      };
+      items.push(entry);
+      writeJsonSafe(REQUESTS_FILE, items);
+      
+      if (guest) {
+        const requestType = body.requestType || body.category || body.serviceLot || 'general';
+        await db.createRequest(guest.id, requestType, body.text, entry.status, id);
+      }
+      
+      return sendJsonResponse(res, 200, { success: true, id, entry });
+    } catch (e) {
+      console.error('POST /api/requests failed', e);
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/api/requests')) {
+    const items = readJsonSafe(REQUESTS_FILE);
+    const url = new URL(req.url, 'http://x');
+    const status = url.searchParams.get('status');
+    const list = status ? items.filter(r => r.status === status) : items;
+    return sendJsonResponse(res, 200, { success: true, requests: list });
+  }
+
+  if (req.method === 'PATCH' && req.url.startsWith('/api/requests/')) {
+    const id = req.url.split('/').pop();
+    const items = readJsonSafe(REQUESTS_FILE);
+    const i = items.findIndex(r => r.id === id);
+    if (i >= 0) {
+      const body = await parseRequestBody(req);
+      const updatedStatus = body.status || items[i].status;
+      items[i] = { ...items[i], status: updatedStatus, updatedAt: new Date().toISOString() };
+      writeJsonSafe(REQUESTS_FILE, items);
+      try {
+        await db.updateRequestStatus(id, updatedStatus);
+      } catch (dbError) {
+        console.error(` Failed to update request ${id} status in DB:`, dbError);
+      }
+      return sendJsonResponse(res, 200, { success: true, entry: items[i] });
+    }
+    return sendJsonResponse(res, 404, { success: false, error: 'not_found' });
+  }
+
+  // Database API endpoints
+  if (req.method === 'GET' && req.url === '/api/db/guests') {
+    try {
+      const guests = await db.getAllGuests();
+      return sendJsonResponse(res, 200, { success: true, guests });
+    } catch (e) {
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/api/db/guests/room/')) {
+    try {
+      const room = decodeURIComponent(req.url.split('/').pop());
+      const guest = await db.getGuestByRoom(room);
+      if (!guest) {
+        return sendJsonResponse(res, 404, { success: false, error: 'not_found' });
+      }
+      const requests = await db.getRequests(guest.id);
+      const conversations = await db.getConversationHistory(guest.id, 20);
+      return sendJsonResponse(res, 200, { success: true, guest, requests, conversations });
+    } catch (e) {
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/api/db/guests/')) {
+    try {
+      const guestId = req.url.split('/').pop();
+      const guest = await db.getGuestWithRequests(guestId);
+      if (guest) {
+        return sendJsonResponse(res, 200, { success: true, guest });
+      }
+      return sendJsonResponse(res, 404, { success: false, error: 'not_found' });
+    } catch (e) {
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/api/db/conversations') {
+    try {
+      const body = await parseRequestBody(req);
+      const { guestId, message, response } = body;
+      if (!guestId || !message || !response) {
+        return sendJsonResponse(res, 400, { success: false, error: 'missing_fields' });
+      }
+      const conversation = await db.logConversation(guestId, message, response);
+      return sendJsonResponse(res, 200, { success: true, conversation });
+    } catch (e) {
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/api/db/conversations/')) {
+    try {
+      const guestId = req.url.split('/').pop();
+      const conversations = await db.getConversationHistory(guestId);
+      return sendJsonResponse(res, 200, { success: true, conversations });
+    } catch (e) {
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  if (req.method === 'GET' && req.url === '/api/db/requests') {
+    try {
+      const requests = await db.getAllRequests();
+      return sendJsonResponse(res, 200, { success: true, requests });
+    } catch (e) {
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  if (req.method === 'GET' && req.url === '/api/db/conversations') {
+    try {
+      const conversations = await db.getAllConversations();
+      return sendJsonResponse(res, 200, { success: true, conversations });
+    } catch (e) {
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  if (req.method === 'GET' && req.url === '/api/db/stats') {
+    try {
+      const stats = await db.getDatabaseStats();
+      return sendJsonResponse(res, 200, { success: true, stats });
+    } catch (e) {
+      return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
+    }
+  }
+
+  // Handle static files
+  let filePath;
+  if (pathname === '/') {
+    filePath = path.join(PUBLIC_DIR, '/chat.html');
+  } else if (!pathname.includes('.') && pathname.startsWith('/')) {
+    filePath = path.join(PUBLIC_DIR, pathname + '.html');
+  } else {
+    filePath = path.join(PUBLIC_DIR, pathname);
+  }
+  
+  const extname = path.extname(filePath);
+  let contentType = mimeTypes[extname] || 'application/octet-stream';
+
+  fs.readFile(filePath, (err, content) => {
+    if (err) {
+      if (err.code === 'ENOENT') {
+        res.writeHead(404);
+        res.end('File not found');
+      } else {
+        res.writeHead(500);
+        res.end(`Server Error: ${err.code}`);
+      }
+    } else {
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content, 'utf-8');
+    }
+  });
+});
+
+async function initTelegramBot() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.log('⚠️ TELEGRAM_BOT_TOKEN not set; Telegram bot disabled.');
+    return;
+  }
+
+  const serverUrl = process.env.SERVER_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  telegramBot = new KFCTelegramBot(token, serverUrl);
+  if (telegramBot.useWebhook) {
+    await telegramBot.setupWebhook();
+  }
+}
+
+server.listen(PORT, async () => {
+  console.log(` Server running at http://localhost:${PORT}`);
+  console.log(` Main chat: http://localhost:${PORT}/chat.html`);
+  console.log(` Staff logs: http://localhost:${PORT}/log.html`);
+  console.log(` Database viewer: http://localhost:${PORT}/database.html`);
+  console.log(` Staff dashboard: http://localhost:${PORT}/dashboard-simple.html`);
+
+  try {
+    await initTelegramBot();
+  } catch (error) {
+    console.error('❌ Failed to initialize Telegram bot:', error);
+  }
+});

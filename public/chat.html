@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DIGITAL4BUSINESS Chat</title>
+  <link rel="icon" href="https://digital4business.fr/wp-content/uploads/job-manager-uploads/company_logo/2022/12/image01346595.png" />
+  <!-- Microsoft Teams SDK -->
+  <script src="https://res.cdn.office.net/teams-js/2.0.0/js/microsoft.teams.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #ffffff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #25346f;
+    }
+
+    .chat-widget {
+      width: 120%;
+      max-width: 600px;
+      height: 700px;
+      background: #ffffff;
+      border-radius: 28px;
+      box-shadow: 0 30px 80px rgba(37, 52, 111, 0.12);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid rgba(37, 52, 111, 0.24);
+    }
+
+    .chat-header {
+      background: #25346f;
+      color: #ffffff;
+      padding: 22px 24px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      position: relative;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex: 1;
+    }
+
+    .logo-img {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      object-fit: contain;
+      border: 2px solid rgba(255, 255, 255, 0.32);
+      background: #ffffff;
+      padding: 4px;
+    }
+
+    .kfc-logo {
+      font-family: 'Arial', sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .logo-subtitle {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.88);
+      margin-top: 4px;
+      letter-spacing: 0.3px;
+      text-align: left;
+      font-weight: 500;
+    }
+
+    .header-controls {
+      display: flex;
+      gap: 10px;
+    }
+
+    .header-btn {
+      background: rgba(255, 255, 255, 0.18);
+      border: none;
+      color: #ffffff;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 10px;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .header-btn:hover {
+      background: rgba(255, 255, 255, 0.28);
+      transform: translateY(-1px);
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .message {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      max-width: 85%;
+    }
+
+    .message.bot {
+      align-self: flex-start;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+
+    .message-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #25346f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 800;
+      color: #ffffff;
+      flex-shrink: 0;
+      box-shadow: 0 12px 30px rgba(37, 52, 111, 0.18);
+    }
+
+    .message.user .message-avatar {
+      background: #f2f2f2;
+      color: #25346f;
+    }
+
+    .message-bubble {
+      background: #f4f7ff;
+      padding: 16px 18px;
+      border-radius: 24px;
+      box-shadow: 0 12px 28px rgba(37, 52, 111, 0.08);
+      font-size: 15px;
+      line-height: 1.6;
+      word-wrap: break-word;
+      max-width: calc(100% - 46px);
+      border: 1px solid rgba(37, 52, 111, 0.12);
+      color: #25346f;
+    }
+
+    .message.bot .message-bubble {
+      border-bottom-left-radius: 8px;
+    }
+
+    .message.user .message-bubble {
+      background: #25346f;
+      color: #ffffff;
+      border-bottom-right-radius: 8px;
+      border: 1px solid #25346f;
+    }
+
+    .quick-replies {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .quick-reply-btn {
+      background: #25346f;
+      color: #ffffff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 700;
+    }
+
+    .quick-reply-btn:hover {
+      background: #1b2c63;
+      transform: translateY(-1px);
+    }
+
+    .quick-reply-btn.outline {
+      background: transparent;
+      color: #25346f;
+      border: 1px solid #25346f;
+    }
+
+    .quick-reply-btn.outline:hover {
+      background: #25346f;
+      color: #ffffff;
+    }
+
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 18px;
+      background: #ffffff;
+      border-radius: 24px;
+      border: 1px solid rgba(37, 52, 111, 0.12);
+      max-width: calc(100% - 46px);
+      animation: appear 0.2s ease-out;
+    }
+
+    .typing-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #25346f;
+      opacity: 0.35;
+      animation: blink 1.2s infinite ease-in-out;
+    }
+
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.35; }
+      40% { opacity: 1; }
+    }
+
+    @keyframes appear {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .chat-input-area {
+      background: #ffffff;
+      padding: 22px;
+      border-top: 1px solid rgba(37, 52, 111, 0.14);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .input-controls {
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-btn {
+      background: #f7f0ee;
+      border: none;
+      color: #25346f;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 10px;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+
+    .input-btn:hover {
+      background: #e6eef9;
+      transform: translateY(-1px);
+    }
+
+    .message-input {
+      flex: 1;
+      border: 1px solid rgba(37, 52, 111, 0.2);
+      border-radius: 28px;
+      padding: 14px 18px;
+      font-size: 15px;
+      outline: none;
+      transition: all 0.2s;
+      resize: none;
+      min-height: 48px;
+      max-height: 1600px;
+      background: #fff;
+      color: #25346f;
+    }
+
+    .message-input:focus {
+      border-color: #25346f;
+      box-shadow: 0 0 0 4px rgba(37, 52, 111, 0.08);
+    }
+
+    .message-input::placeholder {
+      color: #b3b3b3;
+    }
+
+    .send-btn {
+      background: #25346f;
+      color: #ffffff;
+      border: none;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      font-weight: bold;
+      box-shadow: 0 12px 32px rgba(37, 52, 111, 0.18);
+    }
+
+    .send-btn:hover {
+      background: #25346f;
+      transform: scale(1.05);
+    }
+
+    .send-btn:disabled {
+      background: #f0f0f0;
+      color: #b3b3b3;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .chat-messages::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .chat-messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+      background: rgba(16, 8, 134, 0.3);
+      border-radius: 999px;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb:hover {
+      background: rgba(11, 4, 116, 0.5);
+    }
+
+    .guest-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      backdrop-filter: blur(5px);
+    }
+
+    .guest-modal-content {
+      background: #ffffff;
+      border-radius: 30px;
+      padding: 32px;
+      max-width: 420px;
+      width: 100%;
+      border: 1px solid rgba(213, 43, 30, 0.16);
+      box-shadow: 0 30px 80px rgba(213, 43, 30, 0.14);
+    }
+
+    .guest-modal h2 {
+      color: #25346f;
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .guest-form-group {
+      margin-bottom: 20px;
+    }
+
+    .guest-form-group label {
+      display: block;
+      color: #1f1f1f;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .guest-form-group input,
+    .guest-form-group textarea {
+      width: 100%;
+      padding: 14px 18px;
+      border: 1px solid rgba(213, 43, 30, 0.18);
+      border-radius: 16px;
+      background: #fffaf8;
+      color: #1f1f1f;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .guest-form-group input:focus,
+    .guest-form-group textarea:focus {
+      border-color: #25346f;
+      box-shadow: 0 0 0 4px rgba(213, 43, 30, 0.08);
+    }
+
+    .guest-form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .guest-submit-btn {
+      width: 100%;
+      background: #25346f;
+      color: #ffffff;
+      border: none;
+      padding: 16px;
+      border-radius: 20px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 0.02em;
+    }
+
+    .guest-submit-btn:hover {
+      background: #25346f;
+    }
+
+    .guest-submit-btn:disabled {
+      background: #f3f3f3;
+      color: #b3b3b3;
+      cursor: not-allowed;
+    }
+
+    .approval-message {
+      background: #ffffff;
+      border: 1px solid rgba(213, 43, 30, 0.16);
+      border-radius: 24px;
+      padding: 24px;
+      margin: 20px;
+      text-align: center;
+      color: #1f1f1f;
+      box-shadow: 0 20px 60px rgba(213, 43, 30, 0.08);
+    }
+
+    .approval-message h3 {
+      color: #25346f;
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+
+    .approval-message p {
+      color: #505050;
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .chat-disabled {
+      opacity: 0.65;
+      pointer-events: none;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 640px) {
+      .chat-widget {
+        width: 100%;
+        height: 100vh;
+        border-radius: 0;
+      }
+
+      body {
+        padding: 0;
+      }
+
+      .chat-header,
+      .chat-input-area {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+
+      .chat-messages {
+        padding: 18px;
+      }
+
+      .guest-modal-content {
+        margin: 20px;
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Guest Verification Modal -->
+  <div id="guest-modal" class="guest-modal hidden">
+    <div class="guest-modal-content">
+      <h2>Accès Support IT DIGITAL4BUSINESS</h2>
+      <form id="guest-form" novalidate>
+        <div class="guest-form-group">
+          <label for="guest-name">Nom du demandeur *</label>
+          <input type="text" id="guest-name" name="guest_name" required 
+                 autocomplete="name" placeholder="ex: Nom Prénom ">
+        </div>
+        <div class="guest-form-group">
+          <label for="guest-room">Code restaurant *</label>
+          <input type="text" id="guest-room" name="guest_room" required 
+                 autocomplete="organization" placeholder="ex: restaurant 1234">
+        </div>
+        <div class="guest-form-group">
+          <label for="guest-email">Email *</label>
+          <input type="email" id="guest-email" name="guest_email" required
+                 autocomplete="email" placeholder="ex: exemple@exemple.fr">
+        </div>
+        <button type="submit" class="guest-submit-btn" id="guest-submit">
+          Valider
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Waiting for Approval -->
+  <div id="waiting-approval" class="guest-modal hidden" aria-live="polite">
+    <div class="guest-modal-content">
+      <h2>En attente d'approbation</h2>
+      <div class="approval-message">
+        <p>Vos informations ont été soumises pour vérification.</p>
+        <p><strong>Nom:</strong> <span id="waiting-name"></span></p>
+        <p><strong>Restaurant:</strong> <span id="waiting-room"></span></p>
+        <p><strong>Email:</strong> <span id="waiting-email"></span></p>
+        <p hidden><strong>ID Session:</strong> <span id="waiting-session-id"></span></p>
+        <p>Vous pourrez utiliser le chat dès que votre accès sera validé.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="chat-widget">
+    <!-- Header -->
+    <div class="chat-header">
+      <div class="logo-container">
+        <img class="logo-img" src="https://app.myjob.mu/api/job-board/file?filePath=client-logo/9419db1a-8e89-4a6a-b0aa-b21244607ef0.png" alt="DIGITAL4BUSINESS Logo" />
+        <div>
+          <div class="kfc-logo">
+            DIGITAL4BUSINESS
+          </div>
+          <div class="logo-subtitle">Chat Support</div>
+        </div>
+      </div>
+      <div class="header-controls">
+
+      </div>
+    </div>
+
+    <!-- Messages Area -->
+    <div id="chat" class="chat-messages">
+      <!-- Messages will be added here dynamically -->
+    </div>
+
+    <!-- Input Area -->
+    <div class="chat-input-area">
+      <input type="file" id="image-input" accept="image/*" class="hidden" />
+      <button id="image-btn" class="input-btn" title="Attach image">📷</button>
+      <textarea 
+        id="chat-input" 
+        class="message-input" 
+        placeholder="Décrivez votre incident IT ou question..."
+        rows="1"
+      ></textarea>
+      <button id="send-btn" class="send-btn" disabled>
+        ➤
+      </button>
+    </div>
+
+
+  </div>
+
+  <script src="script_rewrite.js"></script>
+  <script>
+    // --- Approval gate (UI) ---
+    let currentSessionId = null;
+    let pollingTimer = null;
+
+    function disableChat(disabled) {
+      const input = document.querySelector('.message-input');
+      const send = document.querySelector('.send-btn');
+      const messages = document.querySelector('.chat-messages');
+      if (disabled) {
+        input?.setAttribute('disabled','disabled');
+        send?.setAttribute('disabled','disabled');
+        messages?.classList.add('chat-disabled');
+      } else {
+        input?.removeAttribute('disabled');
+        send?.removeAttribute('disabled');
+        messages?.classList.remove('chat-disabled');
+      }
+    }
+
+    function showGuestModal() {
+      document.getElementById('guest-modal')?.classList.remove('hidden');
+      document.getElementById('waiting-approval')?.classList.add('hidden');
+      disableChat(true);
+    }
+
+    async function submitGuestInfo(e) {
+      e?.preventDefault?.();
+      const name = document.getElementById('guest-name')?.value?.trim();
+      const room = document.getElementById('guest-room')?.value?.trim();
+      const email = document.getElementById('guest-email')?.value?.trim();
+      if (!name || !room || !email) return;
+
+      const res = await fetch('/api/guest-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, room, email })
+      });
+      const data = await res.json();
+
+      if (data?.success) {
+        currentSessionId = data.sessionId;
+        // Switch UI to "waiting"
+        document.getElementById('guest-modal')?.classList.add('hidden');
+        const wait = document.getElementById('waiting-approval');
+        wait?.classList.remove('hidden');
+        document.getElementById('waiting-name').textContent = name;
+        document.getElementById('waiting-room').textContent = room;
+        document.getElementById('waiting-email').textContent = email;
+        document.getElementById('waiting-session-id').textContent = currentSessionId;
+
+        startApprovalPolling();
+      } else {
+        alert('Submit failed. Please try again.');
+      }
+    }
+
+    async function pollApproval() {
+      if (!currentSessionId) return;
+      console.log('Polling for approval, session ID:', currentSessionId);
+      
+      try {
+        // Use the specific status endpoint for better performance
+        const res = await fetch(`/api/guest-sessions/${currentSessionId}/status`);
+        const data = await res.json();
+        console.log('Status response:', data);
+        
+        if (data?.success && (data.status === 'approved' || data.approved === true)) {
+          console.log('Session approved! Unlocking chat...');
+          clearInterval(pollingTimer);
+          document.getElementById('waiting-approval')?.classList.add('hidden');
+          document.querySelector('.chat-widget')?.classList.remove('hidden');
+          disableChat(false); // unlock chat
+          // Optional greeting
+          const name = document.getElementById('guest-name')?.value?.trim() || 'Guest';
+          addMessage(`Bienvenue ${name}! Votre accès support IT est validé. Décrivez votre incident ou demande d'assistance.`, false);
+          // Mark as approved for the bot
+          window.kfcMarkApproved?.();
+          
+          // Store sessionId for request logging
+          window.currentSessionId = currentSessionId;
+          window.guest = {
+            name: document.getElementById('guest-name')?.value?.trim() || 'Guest',
+            room: document.getElementById('guest-room')?.value?.trim() || 'TBD',
+            email: document.getElementById('guest-email')?.value?.trim() || null
+          };
+          
+          // Store session in localStorage for persistence
+          localStorage.setItem('KFC_CURRENT_SESSION', JSON.stringify({
+            id: currentSessionId,
+            name: window.guest.name,
+            room: window.guest.room,
+            email: window.guest.email,
+            language: (navigator.language || '').slice(0, 2) || 'en'
+          }));
+        } else {
+          console.log('Still waiting for approval. Status:', data?.status, 'Approved:', data?.approved);
+        }
+      } catch (error) {
+        console.error(' Polling error:', error);
+      }
+    }
+
+    function startApprovalPolling() {
+      if (pollingTimer) clearInterval(pollingTimer);
+      pollingTimer = setInterval(pollApproval, 2000);
+    }
+
+    // Bind form in the modal
+    window.addEventListener('DOMContentLoaded', () => {
+      showGuestModal(); // always show on refresh
+      disableChat(true);
+      const form = document.getElementById('guest-form');
+      form?.addEventListener('submit', submitGuestInfo);
+    });
+
+    // Initialize chat interface
+    const chatEl = document.getElementById("chat");
+    const input = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("send-btn");
+
+    // Auto-resize textarea
+    input.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+      
+      // Enable/disable send button
+      sendBtn.disabled = !this.value.trim();
+    });
+
+    // Handle Enter key
+    input.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Send button click
+    sendBtn.addEventListener('click', sendMessage);
+
+    // Image attach flow
+    const imageBtn = document.getElementById('image-btn');
+    const imageInput = document.getElementById('image-input');
+    imageBtn?.addEventListener('click', () => imageInput?.click());
+    imageInput?.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      // Read file as base64
+      const reader = new FileReader();
+      reader.onload = async function() {
+        const dataUrl = reader.result;
+        const matches = String(dataUrl).match(/^data:(image\/[^;]+);base64,(.*)$/);
+        if (!matches) return alert('Unsupported image format');
+        const contentType = matches[1];
+        const base64 = matches[2];
+
+        // Show preview as user's image
+        const tempUrl = URL.createObjectURL(file);
+        addImageMessage(tempUrl, true);
+
+        try {
+          const res = await fetch('/api/upload-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, contentType, data: base64 })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || 'upload_failed');
+
+          // Do not show the image analysis text to the user.
+          // Keep the preview and send an explicit hidden incident-context prompt to the assistant.
+          const analysisChunks = [];
+          if (data.mistralText) analysisChunks.push(`Interprétation de l'image : ${data.mistralText}`);
+          if (data.ocrText) analysisChunks.push(`Texte détecté : ${data.ocrText}`);
+          if (data.labels && Array.isArray(data.labels) && data.labels.length) {
+            analysisChunks.push(`Étiquettes : ${data.labels.map(l => l.description).join(', ')}`);
+          }
+          if (data.analysis) analysisChunks.push(`Métadonnées : ${data.analysis}`);
+          if (!analysisChunks.length && data.url) {
+            analysisChunks.push(`Aucune analyse disponible. L'image est accessible ici : ${data.url}`);
+          }
+
+          const analysisContext = analysisChunks.filter(Boolean).join('\n');
+          if (window.handleUserMessage_QAOnly && analysisContext) {
+            const reply = await handleUserMessage_QAOnly(
+              `L'utilisateur a envoyé une image. Interprétez cette image comme un incident IT de restaurant KFC.` +
+              ` Ne dites pas que vous ne pouvez pas traiter les images. Répondez directement en proposant un diagnostic, une classification d'incident et une orientation vers le bon lot, sans demander à l'utilisateur de décrire à nouveau l'image.` +
+              ` Si l'image montre un écran cassé ou un PC endommagé, traitez cela comme un problème matériel / écran et orientez vers le support matériel ou le lot approprié.` +
+              ` Utilisez les informations suivantes pour comprendre l'incident :\n${analysisContext}` +
+              `${data.url ? `\nImage URL: ${data.url}` : ''}`
+            );
+            if (reply) addMessage(reply, false);
+          }
+        } catch (err) {
+          console.error('Image upload error', err);
+          addMessage('Image upload failed', false);
+        }
+      };
+      reader.readAsDataURL(file);
+      // clear input
+      imageInput.value = '';
+    });
+
+    function sendMessage() {
+      if (window.isSendingMessage) return;
+      const message = input.value.trim();
+      if (!message) return;
+      
+      window.isSendingMessage = true;
+      addMessage(message, true);
+      input.value = '';
+      input.style.height = 'auto';
+      sendBtn.disabled = true;
+      
+      // Show typing indicator
+      showTypingIndicator();
+      
+      // USE LOOP-KILLER SYSTEM FOR TESTING
+      if (window.handleUserMessage_QAOnly) {
+        // Use the new loop-killer system
+        handleUserMessage_QAOnly(message).then(response => {
+          hideTypingIndicator();
+          window.isSendingMessage = false;
+          if (response) {
+            addMessage(response, false);
+          }
+        }).catch(error => {
+          hideTypingIndicator();
+          window.isSendingMessage = false;
+          addMessage("Sorry, I encountered an error. Please try again.", false);
+          console.error('Error:', error);
+        });
+      } else {
+        console.log("QA system not available (should not happen). No fallback text.");
+        hideTypingIndicator();
+        window.isSendingMessage = false;
+      }
+    }
+
+    function addMessage(text, isUser = false) {
+      const messageDiv = document.createElement("div");
+      messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+      
+      const avatar = document.createElement("div");
+      avatar.className = "message-avatar";
+      avatar.textContent = isUser ? "U" : "D4B";
+      
+      const bubble = document.createElement("div");
+      bubble.className = "message-bubble";
+      bubble.textContent = text;
+      
+      if (isUser) {
+        messageDiv.appendChild(bubble);
+        messageDiv.appendChild(avatar);
+      } else {
+        messageDiv.appendChild(avatar);
+        messageDiv.appendChild(bubble);
+      }
+      
+      chatEl.appendChild(messageDiv);
+      
+      // Scroll to bottom
+      setTimeout(() => {
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }, 100);
+    }
+
+    function addImageMessage(url, isUser = false) {
+      const messageDiv = document.createElement("div");
+      messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+      const avatar = document.createElement("div");
+      avatar.className = "message-avatar";
+      avatar.textContent = isUser ? "U" : "S";
+
+      const bubble = document.createElement("div");
+      bubble.className = "message-bubble";
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.maxWidth = '280px';
+      img.style.borderRadius = '12px';
+      img.style.display = 'block';
+      bubble.appendChild(img);
+
+      if (isUser) {
+        messageDiv.appendChild(bubble);
+        messageDiv.appendChild(avatar);
+      } else {
+        messageDiv.appendChild(avatar);
+        messageDiv.appendChild(bubble);
+      }
+
+      chatEl.appendChild(messageDiv);
+      setTimeout(() => { chatEl.scrollTop = chatEl.scrollHeight; }, 100);
+    }
+
+    // Menu and ordering features removed for IT-support chat. Use quick replies for incident reporting instead.
+
+    function showTypingIndicator() {
+      const typingDiv = document.createElement("div");
+      typingDiv.className = "message bot";
+      typingDiv.id = "typing-indicator";
+      
+      const avatar = document.createElement("div");
+      avatar.className = "message-avatar";
+      avatar.textContent = "D4B";
+      
+      const indicator = document.createElement("div");
+      indicator.className = "typing-indicator";
+      indicator.innerHTML = `
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      `;
+      
+      typingDiv.appendChild(avatar);
+      typingDiv.appendChild(indicator);
+      chatEl.appendChild(typingDiv);
+      
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function hideTypingIndicator() {
+      const indicator = document.getElementById("typing-indicator");
+      if (indicator) {
+        indicator.remove();
+      }
+    }
+
+
+
+
+
+    function addQuickReplies(replies) {
+      const quickRepliesDiv = document.createElement("div");
+      quickRepliesDiv.className = "message bot";
+      quickRepliesDiv.style.alignSelf = "flex-start";
+      
+      const avatar = document.createElement("div");
+      avatar.className = "message-avatar";
+      avatar.textContent = "D4B";
+      
+      const container = document.createElement("div");
+      container.className = "quick-replies";
+      
+      replies.forEach(reply => {
+        const btn = document.createElement("button");
+        btn.className = "quick-reply-btn";
+        btn.textContent = reply.text;
+        btn.onclick = () => {
+          if (reply.action === "english" || reply.action === "french" || reply.action === "arabic" || reply.action === "italian") {
+            // Handle language selection
+            const languageMessages = {
+              english: "Perfect! I'll assist you in English. How can I help you today?",
+              french: "Parfait ! Je vais vous assister en français. Comment puis-je vous aider aujourd'hui ?",
+              arabic: "ممتاز! سأساعدك باللغة العربية. كيف يمكنني مساعدتك اليوم؟",
+              italian: "Perfetto! Ti assisterò in italiano. Come posso aiutarti oggi?"
+            };
+            
+            addMessage(languageMessages[reply.action], false);
+            
+            // After language selection, show IT support options
+            setTimeout(() => {
+              addQuickReplies([
+                { text: "Signaler un incident", action: "report_incident" },
+                { text: "Statut du ticket", action: "ticket_status" },
+                { text: "Aide IT", action: "kfc_help" }
+              ]);
+            }, 500);
+          } else if (reply.action === 'ticket_status') {
+            queryAteraTicketsForWeb().then(response => {
+              if (response) addMessage(response, false);
+            });
+          } else {
+            // Handle regular service requests using loop-killer system
+            if (window.handleUserMessage_QAOnly) {
+              handleUserMessage_QAOnly(reply.text).then(response => {
+                  if (response) {
+                  addMessage(response, false);
+                }
+              });
+            } else {
+              console.log("QA system not available for quick reply (should not happen). No fallback text.");
+            }
+          }
+          container.remove();
+        };
+        container.appendChild(btn);
+      });
+      
+      quickRepliesDiv.appendChild(avatar);
+      quickRepliesDiv.appendChild(container);
+      chatEl.appendChild(quickRepliesDiv);
+      
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+
+  </script>
+</body>
+</html>

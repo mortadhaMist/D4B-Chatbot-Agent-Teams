@@ -1,0 +1,1 @@
+const fs=require('fs');const path=require('path');const p=path.join(__dirname,'..','server.js');const lines=fs.readFileSync(p,'utf8').split(/\r?\n/);for(let i=320;i<=340;i++){const l=lines[i-1]||'';console.log(i+':', l);console.log(Buffer.from(l,'utf8').toString('hex'));}

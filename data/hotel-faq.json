@@ -1,0 +1,149 @@
+[{"question": "What is the check-in time at Solaria Hammamet?", 
+"answer": "Check-in starts at 3:00 PM."},
+{"question": "What is the check-out time at Solaria Hammamet?", 
+"answer": "Check-out is until 12:00 PM."},
+{"question": "Does Solaria Hammamet have a spa?", 
+"answer": "Yes, the hotel offers a Thalasso & Spa center with massages, beauty treatments, and an indoor heated pool."},
+{"question": "Is Wi-Fi available at the hotel?", 
+"answer": "Yes, free high-speed Wi-Fi is available throughout the hotel."},
+{"question": "Does the hotel have a swimming pool?", 
+"answer": "Yes, the hotel offers three swimming pools, including an indoor heated pool."},
+{"question": "What restaurants are available at Solaria Hammamet?", 
+"answer": "The hotel features the O Blu buffet restaurant, Agua y Sol snack bar, and the Lobby Bar."},
+{"question": "Is there a fitness center at the hotel?", 
+"answer": "Yes, guests have access to a fully equipped fitness center."},
+{"question": "Does the hotel offer activities for children?", 
+"answer": "Yes, there is a kids' club with supervised activities and entertainment."},
+{"question": "Does Solaria Hammamet have a private beach?", 
+"answer": "Yes, the hotel has direct access to a private beach."},
+{"question": "Are there conference or meeting rooms at the hotel?", 
+"answer": "Yes, the hotel provides conference and meeting facilities for business events."},
+{"question": "Is parking available at the hotel?", 
+"answer": "Yes, free parking is available for guests."},
+{"question": "What leisure activities are available at Solaria Hammamet?", 
+"answer": "Guests can enjoy beach volleyball, water sports, evening shows, and excursions."},
+{"question": "Does the hotel offer room service?", 
+"answer": "Yes, 24-hour room service is available."},
+{"question": "Are there accessible facilities for disabled guests?", 
+"answer": "Yes, the hotel is equipped with facilities for guests with reduced mobility."},
+{"question": "What languages are spoken by the hotel staff?", 
+"answer": "Staff speak Arabic, French, English, and other languages."},
+{"question": "Does the hotel provide airport transfers?", 
+"answer": "Yes, airport transfer services can be arranged upon request."},
+{"question": "Is breakfast included in the room rate?", 
+"answer": "Yes, breakfast is included for most booking packages."},
+{"question": "What type of rooms are available?", 
+"answer": "The hotel offers standard rooms, family rooms, and suites with sea or pool views."},
+{"question": "Does Solaria Hammamet have entertainment programs?", 
+"answer": "Yes, there is daily entertainment, including live music and themed nights."},
+{"question": "Is there a dress code for the restaurants?", 
+"answer": "Smart casual is recommended for dinner service."},
+{
+    "question": "Is Wi-Fi free throughout the hotel?",
+    "answer": "Yes, complimentary high-speed Wi-Fi is available throughout the hotel, including rooms and public areas."
+  },
+  {
+    "question": "Do you offer airport transfer services?",
+    "answer": "Yes, we offer airport transfers to and from Tunis-Carthage and Enfidha airports. This service can be booked at the front desk or in advance."
+  },
+  {
+    "question": "Is there a kids' club?",
+    "answer": "Yes, our hotel offers a fully supervised kids' club with daily activities for children aged 4 to 12."
+  },
+  {
+    "question": "Do you provide pool towels?",
+    "answer": "Yes, complimentary pool towels are available for guests at the pool desk."
+  },
+  {
+    "question": "Can I book excursions from the hotel?",
+    "answer": "Yes, our concierge can arrange a variety of excursions, including visits to the Medina of Hammamet, Carthage, and El Jem."
+  },
+  {
+    "question": "Is there a spa menu available?",
+    "answer": "Yes, our Thalasso & Spa offers a full menu of treatments, including massages, facials, and hydrotherapy."
+  },
+  {
+    "question": "Do the rooms have minibars?",
+    "answer": "Yes, each room features a minibar stocked with soft drinks and water. Additional beverages can be requested."
+  },
+  {
+    "question": "Do you have conference facilities?",
+    "answer": "Yes, we have fully equipped conference rooms for business meetings and events."
+  },
+  {
+    "question": "Is room service available 24 hours?",
+    "answer": "Room service is available from 7:00 AM to 11:00 PM daily."
+  },
+  {
+    "question": "Do you offer gluten-free meal options?",
+    "answer": "Yes, gluten-free meals are available upon request. Please inform our staff in advance."
+  },
+  {
+    "question": "Are pets allowed?",
+    "answer": "Unfortunately, pets are not permitted in the hotel, except for service animals."
+  },
+  {
+    "question": "Do you have a currency exchange service?",
+    "answer": "Yes, currency exchange is available at the reception desk."
+  },
+  {
+    "question": "Is parking available for guests?",
+    "answer": "Yes, complimentary parking is available for all guests."
+  },
+  {
+    "question": "Do you offer car rental services?",
+    "answer": "Yes, we can arrange car rentals through trusted local providers."
+  },
+  {
+    "question": "Is breakfast included in all room rates?",
+    "answer": "Most of our room packages include breakfast. Please check your booking details for confirmation."
+  },
+  {
+    "question": "Can I request a late check-out?",
+    "answer": "Late check-out is subject to availability and may incur an additional fee."
+  },
+  {
+    "question": "Is there a dress code for restaurants?",
+    "answer": "Smart casual is recommended. Swimwear is not permitted in the dining areas."
+  },
+  {
+    "question": "Do you have beach access?",
+    "answer": "Yes, the hotel has direct access to a private sandy beach equipped with sun loungers and umbrellas."
+  },
+  {
+    "question": "Are there any entertainment activities in the evening?",
+    "answer": "Yes, we host live music, shows, and themed nights throughout the week."
+  },
+  {
+    "question": "Do you offer honeymoon packages?",
+    "answer": "Yes, we have special honeymoon packages with romantic room decorations, spa treatments, and private dinners."
+  },
+  {
+    "question": "Where is Solaria Hammamet located?",
+    "answer": "Solaria Hammamet is located in Hammamet, Tunisia, on the beautiful Mediterranean coast. The hotel is situated on the beach with direct access to the sea."
+  },
+  {
+    "question": "Are there cinemas close to Solaria Hammamet?",
+    "answer": "Yes, there are several cinemas in Hammamet town center, about 10-15 minutes by car from the hotel. Our concierge can provide directions and current movie schedules."
+  },
+  {
+    "question": "What attractions are near the hotel?",
+    "answer": "Near Solaria Hammamet you can visit the Medina of Hammamet, Carthageland theme park, local markets, and beautiful beaches. The hotel is also close to golf courses and cultural sites."
+  },
+  {
+    "question": "How big is Carthageland theme park?",
+    "answer": "Carthageland is a large amusement park located in Hammamet, about 15 minutes from Solaria Hammamet. It features rides, attractions, and entertainment for all ages."
+  },
+  {
+    "question": "Where is Carthageland located?",
+    "answer": "Carthageland is located in Hammamet, Tunisia, approximately 15 minutes by car from Solaria Hammamet. Our concierge can arrange transportation or provide directions."
+  },
+  {
+    "question": "How far is the hotel from the airport?",
+    "answer": "Solaria Hammamet is approximately 45 minutes from Tunis-Carthage Airport and 30 minutes from Enfidha Airport. We offer airport transfer services."
+  },
+  {
+    "question": "What is the hotel address?",
+    "answer": "Solaria Hammamet is located in the tourist zone of Hammamet, Tunisia. For the exact address and GPS coordinates, please contact our reception."
+  }
+]

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.24/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "718f0023-2d37-4579-88c4-3241dca7c02c",
+  "packageName": "com.digital4business.chatbot",
+  "developer": {
+    "name": "DIGITAL4BUSINESS",
+    "websiteUrl": "https://www.digital4business.fr",
+    "privacyUrl": "https://www.digital4business.fr/privacy",
+    "termsOfUseUrl": "https://www.digital4business.fr/terms"
+  },
+  "name": {
+    "short": "D4B Chat",
+    "full": "DIGITAL4BUSINESS Chat Bot & Assistant"
+  },
+  "description": {
+    "short": "AI-powered chat assistant for enterprise support",
+    "full": "DIGITAL4BUSINESS Chat Bot provides intelligent, real-time assistance for your team. Get instant answers, support with incident management, and seamless workflow integration."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#25346f",
+  "bots": [
+    {
+      "botId": "718f0023-2d37-4579-88c4-3241dca7c02c",
+      "scopes": [
+        "personal",
+        "team"
+      ],
+      "commandLists": [
+        {
+          "scopes": [
+            "personal",
+            "team"
+          ],
+          "commands": [
+            {
+              "title": "Help",
+              "description": "Show available commands"
+            },
+            {
+              "title": "Support",
+              "description": "Get help or report an issue"
+            }
+          ]
+        }
+      ],
+      "supportsFiles": true,
+      "supportsChannelFeatures": true,
+      "isNotificationOnly": false
+    }
+  ],
+  "staticTabs": [
+    {
+      "entityId": "d4bchat",
+      "name": "Chat",
+      "contentUrl": "https://isotimic-generable-rhys.ngrok-free.dev/public/chat.html",
+      "scopes": [
+        "personal"
+      ],
+      "context": [
+        "personalTab"
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "isotimic-generable-rhys.ngrok-free.dev"
+  ],
+  "webApplicationInfo": {
+    "id": "718f0023-2d37-4579-88c4-3241dca7c02c",
+    "resource": "https://auth.microsoft.com/app/718f0023-2d37-4579-88c4-3241dca7c02c"
+  }
+}

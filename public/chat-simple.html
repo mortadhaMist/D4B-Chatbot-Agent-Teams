@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DIGITAL4BUSINESS Chat - Simple</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #ffffff;
+            color: #25346f;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 700px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 28px;
+            box-shadow: 0 28px 70px rgba(37, 52, 111, 0.12);
+            padding: 28px;
+            border: 1px solid rgba(37, 52, 111, 0.16);
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 12px;
+            color: #25346f;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .header-logo-img {
+            width: 96px;
+            height: 96px;
+            display: block;
+            margin: 0 auto 18px;
+            object-fit: contain;
+            border-radius: 18px;
+            background: #ffffff;
+            padding: 8px;
+            border: 1px solid rgba(37, 52, 111, 0.18);
+        }
+
+        p {
+            color: #25346f;
+            margin-bottom: 18px;
+            line-height: 1.6;
+        }
+
+        .form-group {
+            margin: 16px 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 700;
+            color: #25346f;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 14px 16px;
+            border-radius: 18px;
+            border: 1px solid rgba(37, 52, 111, 0.18);
+            font-size: 15px;
+            color: #25346f;
+            background: #ffffff;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        input:focus, select:focus {
+            border-color: #25346f;
+            box-shadow: 0 0 0 4px rgba(37, 52, 111, 0.08);
+            outline: none;
+        }
+
+        button {
+            padding: 14px 24px;
+            background: #25346f;
+            color: #ffffff;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-weight: 700;
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        button:hover {
+            background: #1b2c63;
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            background: #f1f1f1;
+            color: #b3b3b3;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            padding: 14px 18px;
+            margin: 16px 0;
+            border-radius: 18px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: #25346f;
+        }
+
+        .pending {
+            background: #eef2ff;
+            border: 1px solid #d7e2fb;
+        }
+
+        .approved {
+            background: #e7f0ff;
+            border: 1px solid #abc0ea;
+        }
+
+        .chat-area {
+            border: 1px solid rgba(37, 52, 111, 0.18);
+            border-radius: 24px;
+            padding: 24px;
+            margin: 24px 0;
+            min-height: 220px;
+            background: #ffffff;
+            color: #25346f;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img class="header-logo-img" src="https://app.myjob.mu/api/job-board/file?filePath=client-logo/9419db1a-8e89-4a6a-b0aa-b21244607ef0.png" alt="DIGITAL4BUSINESS Logo" />
+        <h1>DIGITAL4BUSINESS Chat</h1>
+        
+        <!-- Client Form -->
+        <div id="guest-form">
+            <h2>Guest Information</h2>
+            <div class="form-group">
+                <label>Name:</label>
+                <input type="text" id="guest-name" value="Test User">
+            </div>
+            <div class="form-group">
+                <label>Room:</label>
+                <input type="text" id="guest-room" value="123">
+            </div>
+            <div class="form-group">
+                <label>Checkout Date:</label>
+                <input type="date" id="guest-checkout" value="2025-08-20">
+            </div>
+            <button onclick="submitGuest()">Submit Guest Info</button>
+        </div>
+        
+        <!-- Waiting for Approval -->
+        <div id="waiting-approval" class="hidden">
+            <div class="status pending">
+                <h3>Waiting for Approval</h3>
+                <p>Your information has been submitted. Please wait for staff approval.</p>
+                <p><strong>Name:</strong> <span id="waiting-name"></span></p>
+                <p><strong>Room:</strong> <span id="waiting-room"></span></p>
+                <p><strong>Checkout:</strong> <span id="waiting-checkout"></span></p>
+                <p><strong>Session ID:</strong> <span id="waiting-session-id"></span></p>
+            </div>
+        </div>
+        
+        <!-- Chat Interface -->
+        <div id="chat-interface" class="hidden">
+            <div class="status approved">
+                <h3>Approved!</h3>
+                <p>Bienvenue <span id="chat-name"></span>! Vous pouvez maintenant utiliser le chat.</p>
+            </div>
+            
+            <div class="chat-area">
+                <div id="messages"></div>
+            </div>
+            
+            <div class="form-group">
+                <input type="text" id="message-input" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+        
+        <!-- Debug Info -->
+        <div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6;">
+            <h4>Debug Info:</h4>
+            <div id="debug-info"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null;
+        let pollingInterval = null;
+        
+        function updateDebugInfo(message) {
+            const debugDiv = document.getElementById('debug-info');
+            const timestamp = new Date().toLocaleTimeString();
+            debugDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        async function submitGuest() {
+            updateDebugInfo('Submitting guest information...');
+            
+            const guestData = {
+                name: document.getElementById('guest-name').value,
+                room: document.getElementById('guest-room').value,
+                checkout: document.getElementById('guest-checkout').value
+            };
+            
+            try {
+                const response = await fetch('http://localhost:8080/api/guest-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(guestData)
+                });
+                
+                const result = await response.json();
+                updateDebugInfo(`Submit response: ${JSON.stringify(result)}`);
+                
+                if (result.success) {
+                    currentSessionId = result.sessionId;
+                    localStorage.setItem('kfc_guest_session_id', result.sessionId);
+                    localStorage.setItem('kfc_guest_session', JSON.stringify(result.session));
+                    
+                    updateDebugInfo(`Session ID saved: ${result.sessionId}`);
+                    
+                    // Show waiting for approval
+                    showWaitingForApproval(result.session);
+                    
+                    // Start polling
+                    startPolling();
+                } else {
+                    updateDebugInfo(`Submit failed: ${result.error}`);
+                }
+            } catch (error) {
+                updateDebugInfo(`Submit error: ${error.message}`);
+            }
+        }
+        
+        function showWaitingForApproval(guestSession) {
+            updateDebugInfo('Showing waiting for approval state');
+            
+            document.getElementById('guest-form').classList.add('hidden');
+            document.getElementById('waiting-approval').classList.remove('hidden');
+            document.getElementById('chat-interface').classList.add('hidden');
+            
+            document.getElementById('waiting-name').textContent = guestSession.name;
+            document.getElementById('waiting-room').textContent = guestSession.room;
+            document.getElementById('waiting-checkout').textContent = guestSession.checkout;
+            document.getElementById('waiting-session-id').textContent = currentSessionId;
+        }
+        
+        function showChatInterface(guestSession) {
+            updateDebugInfo('Showing chat interface');
+            
+            document.getElementById('guest-form').classList.add('hidden');
+            document.getElementById('waiting-approval').classList.add('hidden');
+            document.getElementById('chat-interface').classList.remove('hidden');
+            
+            document.getElementById('chat-name').textContent = guestSession.name;
+            
+            // Enable chat input
+            document.getElementById('message-input').disabled = false;
+        }
+        
+        function startPolling() {
+            updateDebugInfo('Starting approval polling...');
+            
+            // Check immediately
+            checkApprovalStatus();
+            
+            // Then check every 5 seconds
+            pollingInterval = setInterval(checkApprovalStatus, 5000);
+        }
+        
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+                updateDebugInfo('Stopped approval polling');
+            }
+        }
+        
+        async function checkApprovalStatus() {
+            if (!currentSessionId) {
+                updateDebugInfo('No session ID for polling');
+                return;
+            }
+            
+            try {
+                const url = `http://localhost:8080/api/guest-sessions/${currentSessionId}/status`;
+                updateDebugInfo(`Polling: ${url}`);
+                
+                const response = await fetch(url);
+                const result = await response.json();
+                
+                updateDebugInfo(`Polling response: ${JSON.stringify(result)}`);
+                
+                if (result.success && result.status === 'approved') {
+                    updateDebugInfo('Guest approved! Unlocking chat...');
+                    
+                    stopPolling();
+                    
+                    const guestSession = JSON.parse(localStorage.getItem('kfc_guest_session') || '{}');
+                    showChatInterface(guestSession);
+                } else {
+                    updateDebugInfo(`Still pending. Status: ${result.status}`);
+                }
+            } catch (error) {
+                updateDebugInfo(`Polling error: ${error.message}`);
+            }
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+        
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            
+            if (message) {
+                addMessage(`You: ${message}`, true);
+                input.value = '';
+                
+                // Simulate bot response
+                setTimeout(() => {
+                    addMessage(`Bot: Thank you for your message! This is a test response.`, false);
+                }, 1000);
+            }
+        }
+        
+        function addMessage(text, isUser) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.style.margin = '10px 0';
+            messageDiv.style.padding = '10px';
+            messageDiv.style.backgroundColor = isUser ? '#e3f2fd' : '#f5f5f5';
+            messageDiv.style.borderRadius = '5px';
+            messageDiv.textContent = text;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Check if we already have a session on page load
+        window.onload = function() {
+            const savedSessionId = localStorage.getItem('kfc_guest_session_id');
+            const savedSession = localStorage.getItem('kfc_guest_session');
+            
+            updateDebugInfo(`Page loaded. Saved session ID: ${savedSessionId}`);
+            
+            if (savedSessionId && savedSession) {
+                currentSessionId = savedSessionId;
+                const guestSession = JSON.parse(savedSession);
+                
+                // Check if already approved
+                checkApprovalStatus();
+            }
+        };
+    </script>
+</body>
+</html>

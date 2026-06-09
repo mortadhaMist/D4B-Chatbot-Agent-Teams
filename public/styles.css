@@ -1,0 +1,207 @@
+
+:root {
+  --bg: #ffffff;
+  --text: #1c1c1c;
+  --muted: #666666;
+  --accent: #25346f; /* KFC Red */
+  --accent-light: #25346f;
+  --accent-dark: #25346f;
+  --border: #e2e6ef;
+  --card: #f9f9fc;
+  --shadow: rgba(0, 0, 0, 0.1);
+  --success: #27ae60;
+  --danger: #25346f;
+  --kfc-red: #25346f;
+  --kfc-white: #ffffff;
+  --kfc-gray: #f5f5f5;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+header {
+  background: var(--kfc-red);
+  border-bottom: 2px solid var(--accent-dark);
+  padding: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(21, 8, 99, 0.3);
+}
+
+.logo {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: var(--kfc-white);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.logo svg {
+  max-width: 40px;
+  height: auto;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.logo::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  right: -5px;
+  height: 70px;
+  background: linear-gradient(45deg, var(--kfc-red) 0%, var(--accent-light) 100%);
+  border-radius: 50%;
+  z-index: -1;
+  opacity: 0.8;
+}
+
+/* Responsive design for mobile devices */
+@media (max-width: 768px) {
+  .logo {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .logo svg {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+  }
+  
+  .logo::before {
+    opacity: 0.2;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+main {
+  padding: 16px;
+  max-width: 800px;
+  margin: 0 auto;
+  height: calc(100vh - 80px); /* Account for header height */
+  overflow: hidden; /* Prevent main from scrolling */
+}
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 200px; /* Increased padding to account for footer + debug buttons */
+  min-height: calc(100vh - 200px); /* Ensure container takes full height minus footer */
+  overflow-y: auto; /* Enable scrolling */
+}
+
+.msg {
+  display: flex;
+  gap: 10px;
+}
+
+.bot .bubble,
+.user .bubble {
+  padding: 12px 16px;
+  border-radius: 14px;
+  max-width: 80%;
+  box-shadow: 0 2px 4px var(--shadow);
+}
+
+.bot .bubble {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.user {
+  justify-content: flex-end;
+}
+
+.user .bubble {
+  background: var(--kfc-red);
+  color: var(--kfc-white);
+  font-weight: 500;
+}
+
+footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--kfc-red);
+  border-top: 2px solid var(--accent-dark);
+  padding: 12px;
+  box-shadow: 0 -2px 8px rgba(31, 6, 90, 0.3);
+}
+
+form {
+  display: flex;
+  gap: 8px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 14px;
+  border-radius: 25px;
+  border: 2px solid var(--kfc-red);
+  font-size: 16px;
+  background: #fff;
+  outline: none;
+}
+
+input[type="text"]:focus {
+  border-color: var(--accent-dark);
+  box-shadow: 0 0 0 3px rgba(20, 6, 80, 0.1);
+}
+
+button {
+  padding: 14px 20px;
+  background: var(--kfc-red);
+  border: none;
+  color: var(--kfc-white);
+  font-weight: bold;
+  border-radius: 25px;
+  cursor: pointer;
+  transition: background 0.2s ease-in-out;
+}
+
+button:hover {
+  background: var(--accent-dark);
+}
+
+.lang-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.lang-buttons button {
+  padding: 8px 16px;
+  background: transparent;
+  border: 2px solid var(--d4b-red);
+  color: var(--kfc-red);
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.lang-buttons button.active {
+  background: var(--kfc-red);
+  color: var(--kfc-white);
+  border-color: var(--kfc-red);
+}
