@@ -11,27 +11,26 @@ class KFCTelegramBot {
     this.token = token;
     this.serverUrl = serverUrl;
     
-    // Determine if we're on Render or local
+    // Detect Render environment for logging only
     const isRender = process.env.RENDER_EXTERNAL_URL || 
                      process.env.RENDER || 
                      process.env.RENDER_SERVICE_NAME ||
                      serverUrl.includes('onrender.com') ||
                      process.env.NODE_ENV === 'production';
     
-    // Allow forcing webhook mode via environment variable
+    // Only use webhook mode when explicitly requested
     const forceWebhook = process.env.TELEGRAM_WEBHOOK === 'true';
-    const useWebhook = isRender || forceWebhook;
+    const useWebhook = forceWebhook;
     
-    // Force webhook mode if we have SERVER_URL set (indicating production deployment)
     if (process.env.SERVER_URL && process.env.SERVER_URL.includes('onrender.com')) {
-      console.log('🔧 Detected Render deployment - forcing webhook mode');
+      console.log('🔧 Detected Render deployment - webhook mode is NOT forced automatically');
     }
     
-    console.log('  - Is Render:', isRender);
+    console.log('  - Is Render:', !!isRender);
     console.log('  - Force webhook:', forceWebhook);
     console.log('  - Use webhook:', useWebhook);
     
-    console.log('  - Environment:', isRender ? 'Render (webhook)' : 'Local (polling)');
+    console.log('  - Environment:', useWebhook ? 'Webhook mode' : 'Polling mode');
     
     try {
       // Create bot with appropriate mode
