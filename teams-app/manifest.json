@@ -57,7 +57,7 @@
     {
       "entityId": "d4bchat",
       "name": "Chat",
-      "contentUrl": "https://isotimic-generable-rhys.ngrok-free.dev/public/chat.html",
+      "contentUrl": "https://d4b-chatbot-agent-teams.onrender.com/public/chat.html",
       "scopes": [
         "personal"
       ],
