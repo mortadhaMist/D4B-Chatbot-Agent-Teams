@@ -41,10 +41,18 @@ try {
   
   if (microsoftAppId && microsoftAppPassword) {
     // Configuration de l'adaptateur avec prise en charge du Tenant ID si présent
+    const openIdMetadata = process.env.BOT_OPENID_METADATA || 'https://login.botframework.com/v1/.well-known/openidconfiguration';
     teamsAdapter = new BotFrameworkAdapter({ 
       appId: microsoftAppId, 
       appPassword: microsoftAppPassword,
-      channelAuthTenant: microsoftAppTenantId || undefined
+      channelAuthTenant: microsoftAppTenantId || undefined,
+      openIdMetadata,
+      channelService: process.env.CHANNEL_SERVICE || undefined
+    });
+    console.log('Teams adapter config:', {
+      appId: !!microsoftAppId,
+      openIdMetadata,
+      channelService: process.env.CHANNEL_SERVICE || 'default'
     });
 
     teamsAdapter.onTurnError = async (context, error) => {
@@ -110,7 +118,8 @@ try {
       const userName = context.activity.from?.name || 'TeamsUser';
       // Forward user message to existing chat proxy
       try {
-        const resp = await fetch(`https://d4b-chatbot-agent-teams.onrender.com//api/chat`, {
+        const proxyUrl = 'https://d4b-chatbot-agent-teams.onrender.com/api/chat';
+        const resp = await fetch(proxyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -119,7 +128,23 @@ try {
             guestInfo: { name: userName }
           })
         });
-        const data = await resp.json();
+
+        const contentType = resp.headers.get('content-type') || '';
+        let data = null;
+        if (!resp.ok) {
+          const bodyText = await resp.text().catch(() => 'Unable to read response body');
+          console.error('Teams->chat proxy returned error', { status: resp.status, statusText: resp.statusText, bodyText });
+          throw new Error(`Chat proxy returned ${resp.status}`);
+        }
+
+        if (contentType.includes('application/json')) {
+          data = await resp.json();
+        } else {
+          const bodyText = await resp.text().catch(() => 'Unable to read non-JSON response body');
+          console.error('Teams->chat proxy returned non-JSON response', { contentType, bodyText });
+          throw new Error('Invalid chat proxy response');
+        }
+
         const reply = data?.choices?.[0]?.message?.content || data?.error || 'No response from assistant';
         await context.sendActivity(reply);
       } catch (e) {
@@ -336,6 +361,17 @@ async function readJson(req) {
     });
     req.on('error', reject);
   });
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    return JSON.parse(payload);
+  } catch (e) {
+    return null;
+  }
 }
 
 async function handleApi(req, res) {
@@ -686,8 +722,11 @@ const server = http.createServer(async (req, res) => {
       });
     }
     try {
+      const authHeader = req.headers.authorization || '';
+      const jwtPayload = (authHeader.startsWith('Bearer ') && authHeader.split(' ')[1]) ? decodeJwtPayload(authHeader.split(' ')[1]) : null;
       console.log('Teams /api/messages request received', {
         authorization: !!req.headers.authorization,
+        authSummary: jwtPayload ? { iss: jwtPayload.iss, aud: jwtPayload.aud, appid: jwtPayload.appid || jwtPayload.azp, exp: jwtPayload.exp } : 'no bearer token',
         contentType: req.headers['content-type'],
         userAgent: req.headers['user-agent']
       });
