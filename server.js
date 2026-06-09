@@ -672,7 +672,19 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Teams messages endpoint
-  if (req.url === '/api/messages' && req.method === 'POST' && teamsAdapter && teamsBotHandler) {
+  if (req.url === '/api/messages' && req.method === 'POST') {
+    if (!teamsAdapter || !teamsBotHandler) {
+      console.error('Teams /api/messages: adapter not initialized', {
+        teamsAdapter: !!teamsAdapter,
+        teamsBotHandler: !!teamsBotHandler,
+        MICROSOFT_APP_ID: process.env.MICROSOFT_APP_ID ? '✓ set' : '✗ missing',
+        MICROSOFT_APP_PASSWORD: process.env.MICROSOFT_APP_PASSWORD ? '✓ set' : '✗ missing'
+      });
+      return sendJsonResponse(res, 503, {
+        error: 'Teams bot not configured',
+        details: 'Missing MICROSOFT_APP_ID or MICROSOFT_APP_PASSWORD in environment'
+      });
+    }
     try {
       console.log('Teams /api/messages request received', {
         authorization: !!req.headers.authorization,
