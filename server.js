@@ -1,9 +1,9 @@
-const http = require('http');
+﻿const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const dotenv = require('dotenv');
-const KFCTelegramBot = require('./telegram-bot');
+const D4BTelegramBot = require('./telegram-bot');
 const Jimp = require('jimp');
 
 const envPath = path.join(__dirname, '.env');
@@ -19,28 +19,36 @@ MICROSOFT_APP_PASSWORD=
 MICROSOFT_APP_TENANT_ID=
 `;
   fs.writeFileSync(envPath, envTemplate, 'utf8');
-  console.log('📄 Created missing .env file with placeholders');
+  console.log('ðŸ“„ Created missing .env file with placeholders');
 }
 dotenv.config({ path: envPath });
 
 const PORT = process.env.PORT || 8080;
-const SYSTEM_PROMPT = '';
+const SYSTEM_PROMPT = `Vous êtes un assistant support IT Digital4Business pour les équipes D4B.
+Répondez uniquement en français.
+Vous supportez la classification des incidents IT, l'orientation des lots de service, la priorisation des tickets et le dépannage des problèmes informatiques des équipes D4B.
+Ne répondez qu'aux questions liées au support IT : réseau, Wi-Fi, alimentation, matériel, imprimantes, terminaux, POS/Aloha, gestion du menu Red Biscuit, connectivité, authentification, paiements et infrastructure.
+Ne répondez pas aux questions non liées au support IT, aux commandes, aux promotions, au service client ou aux produits.
+Si l'utilisateur demande quelque chose en dehors du support IT, expliquez poliment que vous ne gérez que les incidents IT D4B et demandez une description du problème technique.
+Utilisez les extraits de la base de connaissances lorsque disponibles.
+Réponses courtes, texte brut uniquement, sans markdown et sans emojis.
+`;
 
 let teamsAdapter = null;
 let teamsBotHandler = null;
 try {
   const { BotFrameworkAdapter, TeamsActivityHandler } = require('botbuilder');
   
-  // Sécurisation de la récupération des variables d'environnement
+  // SÃ©curisation de la rÃ©cupÃ©ration des variables d'environnement
   const microsoftAppId = process.env.MICROSOFT_APP_ID ? String(process.env.MICROSOFT_APP_ID).trim() : null;
   const microsoftAppPassword = process.env.MICROSOFT_APP_PASSWORD ? String(process.env.MICROSOFT_APP_PASSWORD).trim() : null;
   const microsoftAppTenantId = process.env.MICROSOFT_APP_TENANT_ID ? String(process.env.MICROSOFT_APP_TENANT_ID).trim() : null;
 
-  console.log('MICROSOFT_APP_ID loaded:', microsoftAppId ? '✅' : '❌');
-  console.log('MICROSOFT_APP_PASSWORD loaded:', microsoftAppPassword ? '✅' : '❌');
+  console.log('MICROSOFT_APP_ID loaded:', microsoftAppId ? 'âœ…' : 'âŒ');
+  console.log('MICROSOFT_APP_PASSWORD loaded:', microsoftAppPassword ? 'âœ…' : 'âŒ');
   
   if (microsoftAppId && microsoftAppPassword) {
-    // Configuration de l'adaptateur avec prise en charge du Tenant ID si présent
+    // Configuration de l'adaptateur avec prise en charge du Tenant ID si prÃ©sent
     const openIdMetadata = process.env.BOT_OPENID_METADATA || 'https://login.botframework.com/v1/.well-known/openidconfiguration';
     teamsAdapter = new BotFrameworkAdapter({ 
       appId: microsoftAppId, 
@@ -118,7 +126,7 @@ try {
       const userName = context.activity.from?.name || 'TeamsUser';
       // Forward user message to existing chat proxy
       try {
-        const proxyUrl = 'https://d4b-chatbot-agent-teams.onrender.com/api/chat';
+        const proxyUrl = process.env.CHAT_PROXY_URL || `http://127.0.0.1:${PORT}/api/chat`;
         const resp = await fetch(proxyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -161,8 +169,8 @@ try {
   console.error('Teams integration failed to initialize:', e);
 }
 
-console.log("API KEY Loaded:", process.env.MISTRAL_API_KEY ? "✅" : "❌");
-console.log("SKIP_APPROVAL:", process.env.SKIP_APPROVAL === "true" ? "🚀 ENABLED (Auto-approval active)" : " DISABLED (Manual approval required)");
+console.log("API KEY Loaded:", process.env.MISTRAL_API_KEY ? "âœ…" : "âŒ");
+console.log("SKIP_APPROVAL:", process.env.SKIP_APPROVAL === "true" ? "ðŸš€ ENABLED (Auto-approval active)" : " DISABLED (Manual approval required)");
 
 let telegramBot = null;
 
@@ -183,6 +191,38 @@ function ensureKbDir() {
   if (!fs.existsSync(KB_DIR)) fs.mkdirSync(KB_DIR, { recursive: true });
 }
 
+function extractDocxText(buffer) {
+  try {
+    let pos = 0;
+    while (pos + 30 <= buffer.length) {
+      const signature = buffer.readUInt32LE(pos);
+      if (signature !== 0x04034b50) break;
+      const flags = buffer.readUInt16LE(pos + 6);
+      const compression = buffer.readUInt16LE(pos + 8);
+      const fnameLen = buffer.readUInt16LE(pos + 26);
+      const extraLen = buffer.readUInt16LE(pos + 28);
+      const compSize = buffer.readUInt32LE(pos + 18);
+      const fileName = buffer.slice(pos + 30, pos + 30 + fnameLen).toString('utf8');
+      const dataStart = pos + 30 + fnameLen + extraLen;
+      if (fileName === 'word/document.xml') {
+        const compressedSlice = buffer.slice(dataStart, dataStart + compSize);
+        let xml = '';
+        if (compression === 0) {
+          xml = compressedSlice.toString('utf8');
+        } else if (compression === 8) {
+          xml = require('zlib').inflateRawSync(compressedSlice).toString('utf8');
+        }
+        return xml.replace(/<w:t[^>]*>(.*?)<\/w:t>/gs, '$1').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+      pos = dataStart + compSize;
+      if (compSize === 0) break;
+    }
+  } catch (e) {
+    return '';
+  }
+  return '';
+}
+
 function loadKnowledgeIndex() {
   ensureKbDir();
   KNOWLEDGE = [];
@@ -190,10 +230,27 @@ function loadKnowledgeIndex() {
   for (const f of files) {
     try {
       const p = path.join(KB_DIR, f);
-      const txt = fs.readFileSync(p, 'utf8');
-      KNOWLEDGE.push({ filename: f, text: txt });
+      const ext = path.extname(f).toLowerCase();
+      let text = '';
+      if (ext === '.json') {
+        const raw = fs.readFileSync(p, 'utf8');
+        try {
+          const json = JSON.parse(raw);
+          text = typeof json === 'string' ? json : JSON.stringify(json, null, 2);
+        } catch (err) {
+          text = raw;
+        }
+      } else if (ext === '.docx') {
+        const buffer = fs.readFileSync(p);
+        text = extractDocxText(buffer);
+      } else {
+        text = fs.readFileSync(p, 'utf8');
+      }
+      if (text && text.trim().length > 20) {
+        KNOWLEDGE.push({ filename: f, text: text.trim() });
+      }
     } catch (e) {
-      // binary or unreadable, skip textual indexing
+      console.warn(`Skipping KB file ${f}:`, e?.message || e);
     }
   }
   console.log(` Loaded ${KNOWLEDGE.length} knowledge files`);
@@ -387,17 +444,17 @@ async function handleApi(req, res) {
       const userText = lastUser ? (typeof lastUser.content === 'string' ? lastUser.content : JSON.stringify(lastUser.content)) : '';
       const snippets = lastUser ? searchKnowledge(userText, 3) : '';
 
-      // Determine if we should force the KFC troubleshooting template (French)
+      // Determine if we should force the D4B troubleshooting template (French)
       let format = responseFormat || null;
       const lower = String(userText || '').toLowerCase();
-      if (!format && (lower.includes('bsod') || lower.includes('écran bleu') || lower.includes('blue screen'))) format = 'kfc_troubleshoot_fr';
+      if (!format && (lower.includes('bsod') || lower.includes('Ã©cran bleu') || lower.includes('blue screen'))) format = 'D4B_troubleshoot_fr';
 
       const outgoing = [];
       if (snippets) outgoing.push({ role: 'system', content: `Relevant knowledge:\n${snippets}` });
 
-      // If requested, instruct the assistant to reply using the KFC-friendly French troubleshooting template
-      if (format === 'kfc_troubleshoot_fr') {
-        const guide = `Répondez en français en utilisant exactement le format suivant (ne rajoutez pas d'autres sections) :\n\n**Classification :**\n- Priorité : P1 / P2 / ...\n- Lot : Nom du lot\n\n**Étapes de dépannage (suivre dans l'ordre)**\n1. Titre de l'étape :\n- Action : description claire et courte\n- Vérifier : question binaire ou instruction précise\n- Question à renvoyer : une question courte que l'utilisateur doit répondre\n\n( répétez pour chaque étape )\n\n**Si les étapes ci‑dessus échouent**\n- Action : instructions pour ouvrir un ticket ou escalade\n\n**Contournements temporaires**\n- Liste courte des contournements\n\n**Checklist rapide à renvoyer (copier/coller)**\n- [ ] Item 1 - résultat : (Oui / Non / autre)\n- [ ] Item 2 - résultat : ...\n\n**Question pour l'utilisateur :**\nUne question claire demandant l'état actuel et toute info (codes d'erreur, photo).`;
+      // If requested, instruct the assistant to reply using the D4B-friendly French troubleshooting template
+      if (format === 'D4B_troubleshoot_fr') {
+        const guide = `RÃ©pondez en franÃ§ais en utilisant exactement le format suivant (ne rajoutez pas d'autres sections) :\n\n**Classification :**\n- PrioritÃ© : P1 / P2 / ...\n- Lot : Nom du lot\n\n**Ã‰tapes de dÃ©pannage (suivre dans l'ordre)**\n1. Titre de l'Ã©tape :\n- Action : description claire et courte\n- VÃ©rifier : question binaire ou instruction prÃ©cise\n- Question Ã  renvoyer : une question courte que l'utilisateur doit rÃ©pondre\n\n( rÃ©pÃ©tez pour chaque Ã©tape )\n\n**Si les Ã©tapes ciâ€‘dessus Ã©chouent**\n- Action : instructions pour ouvrir un ticket ou escalade\n\n**Contournements temporaires**\n- Liste courte des contournements\n\n**Checklist rapide Ã  renvoyer (copier/coller)**\n- [ ] Item 1 - rÃ©sultat : (Oui / Non / autre)\n- [ ] Item 2 - rÃ©sultat : ...\n\n**Question pour l'utilisateur :**\nUne question claire demandant l'Ã©tat actuel et toute info (codes d'erreur, photo).`;
         outgoing.push({ role: 'system', content: guide });
       }
 
@@ -429,7 +486,7 @@ async function handleApi(req, res) {
         console.log('[Atera] Incoming request payload:', body);
         const ateraUrl = process.env.ATERA_API_URL.toLowerCase().includes('/api/v3/tickets') ? process.env.ATERA_API_URL : new URL('/api/v3/tickets', process.env.ATERA_API_URL).toString();
         console.log('[Atera] Forwarding request to:', ateraUrl);
-        const problemLabel = body.category ? body.category : 'problème';
+        const problemLabel = body.category ? body.category : 'problÃ¨me';
         const subjectName = body.name || 'demandeur inconnu';
         const subjectRoom = body.room || 'Restaurant inconnu';
         const ateraSubject = `${subjectRoom} - ${problemLabel} - ${subjectName}`;
@@ -437,8 +494,8 @@ async function handleApi(req, res) {
           `Nom: ${body.name || 'Unknown'}`,
           `Restaurant: ${body.room || 'Unknown'}`,
           `Email: ${body.email || 'Unknown'}`,
-          `Catégorie: ${body.category || 'problème'}`,
-          `Priorité: ${body.priority || 'P3'}`,
+          `CatÃ©gorie: ${body.category || 'problÃ¨me'}`,
+          `PrioritÃ©: ${body.priority || 'P3'}`,
           `Service Lot: ${body.serviceLot || 'Lot 1 - Helpdesk / Service Desk'}`,
           `Session ID: ${body.sessionId || 'N/A'}`,
           '',
@@ -701,7 +758,7 @@ const server = http.createServer(async (req, res) => {
         telegramBot.processUpdate(update);
         return sendJsonResponse(res, 200, { status: 'Webhook processed', bot_available: true });
       } catch (error) {
-        console.error('❌ Telegram webhook error:', error);
+        console.error('âŒ Telegram webhook error:', error);
         return sendJsonResponse(res, 400, { error: 'Invalid webhook payload', details: String(error) });
       }
     }
@@ -713,8 +770,8 @@ const server = http.createServer(async (req, res) => {
       console.error('Teams /api/messages: adapter not initialized', {
         teamsAdapter: !!teamsAdapter,
         teamsBotHandler: !!teamsBotHandler,
-        MICROSOFT_APP_ID: process.env.MICROSOFT_APP_ID ? '✓ set' : '✗ missing',
-        MICROSOFT_APP_PASSWORD: process.env.MICROSOFT_APP_PASSWORD ? '✓ set' : '✗ missing'
+        MICROSOFT_APP_ID: process.env.MICROSOFT_APP_ID ? 'âœ“ set' : 'âœ— missing',
+        MICROSOFT_APP_PASSWORD: process.env.MICROSOFT_APP_PASSWORD ? 'âœ“ set' : 'âœ— missing'
       });
       return sendJsonResponse(res, 503, {
         error: 'Teams bot not configured',
@@ -1101,12 +1158,12 @@ const server = http.createServer(async (req, res) => {
 async function initTelegramBot() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
-    console.log('⚠️ TELEGRAM_BOT_TOKEN not set; Telegram bot disabled.');
+    console.log('âš ï¸ TELEGRAM_BOT_TOKEN not set; Telegram bot disabled.');
     return;
   }
 
   const serverUrl = process.env.SERVER_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-  telegramBot = new KFCTelegramBot(token, serverUrl);
+  telegramBot = new D4BTelegramBot(token, serverUrl);
   if (telegramBot.useWebhook) {
     await telegramBot.setupWebhook();
   }
@@ -1122,15 +1179,15 @@ server.listen(PORT, async () => {
   try {
     // Initialize database
     await db.init();
-    console.log('✅ Database initialized successfully');
+    console.log('âœ… Database initialized successfully');
   } catch (error) {
-    console.error('❌ Failed to initialize database:', error);
+    console.error('âŒ Failed to initialize database:', error);
     process.exit(1);
   }
 
   try {
     await initTelegramBot();
   } catch (error) {
-    console.error('❌ Failed to initialize Telegram bot:', error);
+    console.error('âŒ Failed to initialize Telegram bot:', error);
   }
 });

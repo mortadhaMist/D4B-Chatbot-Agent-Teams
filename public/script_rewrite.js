@@ -1,6 +1,6 @@
-
-// === KFC France Restaurant Assistant ===
-// Enhanced chatbot with natural conversation flow and empathy
+﻿
+// === D4B IT Support Assistant ===
+// Enhanced chatbot with a French-only user experience for D4B IT support
 
 // --- APPROVAL GATE ---
 // --- flags ---
@@ -11,11 +11,11 @@ window.EMERGENCY_LOGGING = false; // leave OFF for now
 console.log(' D4B Chatbot v2.2 - Request Logging Enabled');
 
 // Gate all sends until approved
-window.__KFC_APPROVED__ = false;
+window.__D4B_APPROVED__ = false;
 
 // Flip this when approval arrives (from chat.html script after polling success):
-window.kfcMarkApproved = function() {
-  window.__KFC_APPROVED__ = true;
+window.d4bMarkApproved = function() {
+  window.__D4B_APPROVED__ = true;
 };
 
 // Service request detection utilities
@@ -23,12 +23,12 @@ function norm(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, ''); 
 }
 
-const IT_CRITICAL = /\b(system down|système down|caisse bloquée|caisse en panne|paiement refusé|paiement impossible|transaction refusée|réseau coupé|connexion perdue|wifi down|internet down|électricité|alimentation|power outage|panne électrique|incident critique|incident de sécurité|danger|fumée|gaz)\b/i;
+const IT_CRITICAL = /\b(system down|systÃ¨me down|caisse bloquÃ©e|caisse en panne|paiement refusÃ©|paiement impossible|transaction refusÃ©e|rÃ©seau coupÃ©|connexion perdue|wifi down|internet down|Ã©lectricitÃ©|alimentation|power outage|panne Ã©lectrique|incident critique|incident de sÃ©curitÃ©|danger|fumÃ©e|gaz)\b/i;
 
-const IT_SERVICE_KEYWORDS = /\b(incident|probl[eè]me|aide|support|panne|caisse|pos|aloha|ncr|red biscuit|r[eé]seau|wifi|internet|connexion|imprimante|printer|[ée]cran|terminal|logiciel|software|mdp|login|authentification|paiement|ticket|promotion|promo|menu|gestion du menu|configuration|badge|identifiant)\b/i;
+const IT_SERVICE_KEYWORDS = /\b(incident|probl[eÃ¨]me|aide|support|panne|caisse|pos|aloha|ncr|red biscuit|r[eÃ©]seau|wifi|internet|connexion|imprimante|printer|[Ã©e]cran|terminal|logiciel|software|mdp|login|authentification|paiement|ticket|promotion|promo|menu|gestion du menu|configuration|badge|identifiant)\b/i;
 
-const HARD = /\b(urgent|urgence|critique|bloqu[eé]|bloqu[eé]e|down|panne|incident|caisse bloqu[eé]e|caisse en panne|paiement refus[eé]|paiement impossible|transaction refus[eé]|r[eé]seau coup[eé]|connexion perdue|wifi down|internet down|[ée]lectricit[eé]|alimentation|power outage|panne [ée]lectrique)\b/i;
-const INTENT = /\b(incident|probl[eè]me|support|aide|panne|caisse|pos|aloha|ncr|red biscuit|r[eé]seau|wifi|internet|connexion|imprimante|printer|terminal|login|mot de passe|paiement|promo|promotion|menu)\b/i;
+const HARD = /\b(urgent|urgence|critique|bloqu[eÃ©]|bloqu[eÃ©]e|down|panne|incident|caisse bloqu[eÃ©]e|caisse en panne|paiement refus[eÃ©]|paiement impossible|transaction refus[eÃ©]|r[eÃ©]seau coup[eÃ©]|connexion perdue|wifi down|internet down|[Ã©e]lectricit[eÃ©]|alimentation|power outage|panne [Ã©e]lectrique)\b/i;
+const INTENT = /\b(incident|probl[eÃ¨]me|support|aide|panne|caisse|pos|aloha|ncr|red biscuit|r[eÃ©]seau|wifi|internet|connexion|imprimante|printer|terminal|login|mot de passe|paiement|promo|promotion|menu)\b/i;
 
 // Expose to window as globals to prevent ReferenceError in older cached contexts
 try {
@@ -39,12 +39,12 @@ try {
 }
 
 const SYSTEM_LOTS = [
-  { lot: 'Lot 2 - Menu Management Red Biscuit', match: /\b(red biscuit|gestion du menu|mise à jour du menu|promotion|promo|menu)\b/i },
-  { lot: 'Lot 3 - Menu Management Aloha', match: /\b(aloha|ncr|pos|caisse|terminal|kds|kitchen display|tpv)\b/i },
-  { lot: 'Lot 1 - Helpdesk / Service Desk', match: /\b(r[eé]seau|wifi|internet|connexion|imprimante|printer|[ée]lectricit[eé]|alimentation|power|incident|panne|support|aide|probl[eè]me)\b/i }
+  { lot: 'Lot 2 - Gestion Menu D4B', match: /\b(gestion du menu|mise Ã  jour du menu|promotion|promo|menu)\b/i },
+  { lot: 'Lot 3 - Support POS', match: /\b(pos|terminal|kds|kitchen display|tpv|caisse|logiciel|application)\b/i },
+  { lot: 'Lot 1 - Helpdesk / Service Desk', match: /\b(r[eÃ©]seau|wifi|internet|connexion|imprimante|terminal|[Ã©e]lectricit[eÃ©]|alimentation|incident|panne|support|aide|probl[eÃ¨]me)\b/i }
 ];
 
-function parseKFCOrder(message) {
+function parseD4BOrder(message) {
   return null; // no food ordering support in IT ticketing mode
 }
 
@@ -61,72 +61,60 @@ function looksLikeServiceRequest(text) {
 // Request confirmation messages for IT support requests
 const CONFIRM_MESSAGES = {
   P1: {
-    EN: "Your critical incident has been logged with priority P1. Our IT support team will act within 2 hours.",
-    FR: "Votre incident critique a été enregistré avec la priorité P1. Notre équipe support IT interviendra sous 2 heures.",
-    AR: "تم تسجيل الحادث الحرج بالأولوية P1. سيتولى فريق الدعم الفني الأمر خلال ساعتين."
+    FR: "Votre incident critique a Ã©tÃ© enregistrÃ© avec la prioritÃ© P1. Notre Ã©quipe support IT interviendra sous 2 heures."
   },
   P2: {
-    EN: "Your urgent request has been logged with priority P2. We will address it within 24 hours.",
-    FR: "Votre demande urgente a été enregistrée avec la priorité P2. Nous y répondrons sous 24 heures.",
-    AR: "تم تسجيل طلبك العاجل بالأولوية P2. سنعالجه خلال 24 ساعة."
+    FR: "Votre demande urgente a Ã©tÃ© enregistrÃ©e avec la prioritÃ© P2. Nous y rÃ©pondrons sous 24 heures."
   },
   P3: {
-    EN: "Your request has been recorded with priority P3. It will be handled within 72 hours.",
-    FR: "Votre demande a été enregistrée avec la priorité P3. Elle sera traitée sous 72 heures.",
-    AR: "تم تسجيل طلبك بالأولوية P3. سيتم التعامل معه خلال 72 ساعة."
+    FR: "Votre demande a Ã©tÃ© enregistrÃ©e avec la prioritÃ© P3. Elle sera traitÃ©e sous 72 heures."
   },
   P4: {
-    EN: "Your request has been logged with priority P4. It will be scheduled within 7 days.",
-    FR: "Votre demande a été enregistrée avec la priorité P4. Elle sera programmée sous 7 jours.",
-    AR: "تم تسجيل طلبك بالأولوية P4. سيتم جدولته خلال 7 أيام."
+    FR: "Votre demande a Ã©tÃ© enregistrÃ©e avec la prioritÃ© P4. Elle sera programmÃ©e sous 7 jours."
   },
   default: {
-    EN: "Your request has been logged. Our support team will follow up with the restaurant shortly.",
-    FR: "Votre demande a été enregistrée. Notre équipe de support vous recontactera sous peu.",
-    AR: "تم تسجيل طلبك. سيتابع فريق الدعم الأمر مع المطعم قريباً."
+    FR: "Votre demande a Ã©tÃ© enregistrÃ©e. Notre Ã©quipe de support vous recontactera sous peu."
   }
 };
 
 function getConfirmationMessage(text, summary = {}) {
-  const detectedLang = detectLanguage(text);
-  const lang = detectedLang === 'FR' ? 'FR' : detectedLang === 'AR' ? 'AR' : 'EN';
+  const lang = 'FR';
   const priority = summary.priority || 'default';
   const serviceLot = summary.serviceLot || 'Lot 1 - Helpdesk / Service Desk';
-  const deadline = summary.slaDeadline ? ` SLA deadline: ${summary.slaDeadline}` : '';
+  const deadline = summary.slaDeadline ? ` Date limite : ${summary.slaDeadline}` : '';
 
   if (CONFIRM_MESSAGES[priority]) {
-    return `${CONFIRM_MESSAGES[priority][lang] || CONFIRM_MESSAGES[priority].EN} ${serviceLot}.${deadline}`.trim();
+    return `${CONFIRM_MESSAGES[priority].FR} ${serviceLot}.${deadline}`.trim();
   }
-  return `${CONFIRM_MESSAGES.default[lang] || CONFIRM_MESSAGES.default.EN} ${serviceLot}.${deadline}`.trim();
+  return `${CONFIRM_MESSAGES.default.FR} ${serviceLot}.${deadline}`.trim();
 }
 
 function getServiceSpecificResponse(text) {
-  const detectedLang = detectLanguage(text);
-  const lang = detectedLang === 'FR' ? 'FR' : detectedLang === 'AR' ? 'AR' : 'EN';
+  const lang = 'FR';
   const lowerText = text.toLowerCase();
 
   const responses = {
-    EN: {
-      network: "I understand this is a network or connectivity incident. I will assign it to the IT infrastructure team.",
+    FR: {
+      network: "Je comprends qu'il s'agit d'un incident réseau ou de connectivité. Je le transférerai à l'équipe infrastructure IT.",
       aloha: "This looks like an Aloha/POS incident. I will route it to the Menu Management Aloha team.",
       redbiscuit: "This appears to be a menu management issue for Red Biscuit. I will forward it to the appropriate support lot.",
       default: "I have logged your IT support request and will route it to the correct team."
     },
     FR: {
-      network: "Je comprends qu'il s'agit d'un incident réseau ou de connectivité. Je le transférerai à l'équipe infrastructure IT.",
+      network: "Je comprends qu'il s'agit d'un incident rÃ©seau ou de connectivitÃ©. Je le transfÃ©rerai Ã  l'Ã©quipe infrastructure IT.",
       aloha: "Il semble s'agir d'un incident Aloha/POS. Je l'orienterai vers le lot Menu Management Aloha.",
-      redbiscuit: "Ceci semble être un problème de gestion menu Red Biscuit. Je le transmettrai au bon lot de support.",
-      default: "J'ai bien enregistré votre demande de support IT et je la dirige vers l'équipe appropriée."
+      redbiscuit: "Ceci semble Ãªtre un problÃ¨me de gestion menu Red Biscuit. Je le transmettrai au bon lot de support.",
+      default: "J'ai bien enregistrÃ© votre demande de support IT et je la dirige vers l'Ã©quipe appropriÃ©e."
     },
     AR: {
-      network: "أفهم أن هذا حادث شبكة أو اتصال. سأقوم بتوجيهه إلى فريق البنية التحتية التقنية.",
-      aloha: "يبدو أن هذا حادث Aloha/POS. سأوجهه إلى فريق دعم إدارة القائمة Aloha.",
-      redbiscuit: "يبدو أن هذه مشكلة في إدارة القائمة Red Biscuit. سأحولها إلى الفريق المناسب.",
-      default: "تم تسجيل طلب الدعم الفني الخاص بك وسأوجهه إلى الفريق المناسب."
+      network: "Ø£ÙÙ‡Ù… Ø£Ù† Ù‡Ø°Ø§ Ø­Ø§Ø¯Ø« Ø´Ø¨ÙƒØ© Ø£Ùˆ Ø§ØªØµØ§Ù„. Ø³Ø£Ù‚ÙˆÙ… Ø¨ØªÙˆØ¬ÙŠÙ‡Ù‡ Ø¥Ù„Ù‰ ÙØ±ÙŠÙ‚ Ø§Ù„Ø¨Ù†ÙŠØ© Ø§Ù„ØªØ­ØªÙŠØ© Ø§Ù„ØªÙ‚Ù†ÙŠØ©.",
+      aloha: "ÙŠØ¨Ø¯Ùˆ Ø£Ù† Ù‡Ø°Ø§ Ø­Ø§Ø¯Ø« Aloha/POS. Ø³Ø£ÙˆØ¬Ù‡Ù‡ Ø¥Ù„Ù‰ ÙØ±ÙŠÙ‚ Ø¯Ø¹Ù… Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© Aloha.",
+      redbiscuit: "ÙŠØ¨Ø¯Ùˆ Ø£Ù† Ù‡Ø°Ù‡ Ù…Ø´ÙƒÙ„Ø© ÙÙŠ Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© Red Biscuit. Ø³Ø£Ø­ÙˆÙ„Ù‡Ø§ Ø¥Ù„Ù‰ Ø§Ù„ÙØ±ÙŠÙ‚ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨.",
+      default: "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø·Ù„Ø¨ Ø§Ù„Ø¯Ø¹Ù… Ø§Ù„ÙÙ†ÙŠ Ø§Ù„Ø®Ø§Øµ Ø¨Ùƒ ÙˆØ³Ø£ÙˆØ¬Ù‡Ù‡ Ø¥Ù„Ù‰ Ø§Ù„ÙØ±ÙŠÙ‚ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨."
     }
   };
 
-  if (/\b(r[eé]seau|wifi|internet|connexion)\b/.test(lowerText)) return responses[lang].network;
+  if (/\b(r[eÃ©]seau|wifi|internet|connexion)\b/.test(lowerText)) return responses[lang].network;
   if (/\b(aloha|ncr|pos|caisse|terminal|kds|tpv)\b/.test(lowerText)) return responses[lang].aloha;
   if (/\b(red biscuit|menu|promotion|promo|gestion du menu)\b/.test(lowerText)) return responses[lang].redbiscuit;
   return responses[lang].default;
@@ -145,13 +133,13 @@ const TROUBLESHOOT_FLOWS = {
   'Menu Management Aloha': {
     EN: [
       "Please restart the POS terminal by powering it off for 30 seconds and then powering it back on. Did that fix the issue?",
-      "Please check the network cable and Wi‑Fi indicator on the terminal. Is the network connected?",
+      "Please check the network cable and Wiâ€‘Fi indicator on the terminal. Is the network connected?",
       "If the POS still fails to process payments, try logging out and logging back into the POS application. Did that resolve it?"
     ],
     FR: [
-      "Veuillez redémarrer le terminal POS en l'éteignant pendant 30 secondes, puis en le rallumant. Cela a-t-il résolu le problème ?",
-      "Veuillez vérifier le câble réseau et l'indicateur Wi-Fi du terminal. Le réseau est-il connecté ?",
-      "Si le POS ne traite toujours pas les paiements, essayez de vous déconnecter et de vous reconnecter à l'application POS. Cela a-t-il résolu le problème ?"
+      "Veuillez redÃ©marrer le terminal POS en l'Ã©teignant pendant 30 secondes, puis en le rallumant. Cela a-t-il rÃ©solu le problÃ¨me ?",
+      "Veuillez vÃ©rifier le cÃ¢ble rÃ©seau et l'indicateur Wi-Fi du terminal. Le rÃ©seau est-il connectÃ© ?",
+      "Si le POS ne traite toujours pas les paiements, essayez de vous dÃ©connecter et de vous reconnecter Ã  l'application POS. Cela a-t-il rÃ©solu le problÃ¨me ?"
     ]
   },
   'Menu Management Red Biscuit': {
@@ -161,9 +149,9 @@ const TROUBLESHOOT_FLOWS = {
       "If sync still fails, please capture the error message shown in the Red Biscuit admin and paste it here."
     ],
     FR: [
-      "Vérifiez que le service de flux Red Biscuit fonctionne sur le serveur de contenu. Pouvez-vous confirmer l'état du service ?",
-      "Essayez de republier l'élément de menu dans Red Biscuit et attendez 2 minutes pour la synchronisation. L'élément a-t-il apparu ?",
-      "Si la synchronisation échoue toujours, veuillez capturer le message d'erreur affiché dans l'administration Red Biscuit et le coller ici."
+      "VÃ©rifiez que le service de flux Red Biscuit fonctionne sur le serveur de contenu. Pouvez-vous confirmer l'Ã©tat du service ?",
+      "Essayez de republier l'Ã©lÃ©ment de menu dans Red Biscuit et attendez 2 minutes pour la synchronisation. L'Ã©lÃ©ment a-t-il apparu ?",
+      "Si la synchronisation Ã©choue toujours, veuillez capturer le message d'erreur affichÃ© dans l'administration Red Biscuit et le coller ici."
     ]
   },
   'Technical Issue': {
@@ -173,9 +161,9 @@ const TROUBLESHOOT_FLOWS = {
       "If the issue persists, note the router model and WAN status and I'll create a ticket for the network team."
     ],
     FR: [
-      "Veuillez vérifier que le réseau du restaurant (routeur) affiche une connexion Internet. Pouvez-vous voir d'autres sites Web à partir d'un PC du magasin ?",
-      "Si le réseau est hors ligne, redémarrez le routeur et vérifiez la LED WAN/Internet. Cela a-t-il rétabli la connectivité ?",
-      "Si le problème persiste, notez le modèle du routeur et l'état WAN et je créerai un ticket pour l'équipe réseau."
+      "Veuillez vÃ©rifier que le rÃ©seau du restaurant (routeur) affiche une connexion Internet. Pouvez-vous voir d'autres sites Web Ã  partir d'un PC du magasin ?",
+      "Si le rÃ©seau est hors ligne, redÃ©marrez le routeur et vÃ©rifiez la LED WAN/Internet. Cela a-t-il rÃ©tabli la connectivitÃ© ?",
+      "Si le problÃ¨me persiste, notez le modÃ¨le du routeur et l'Ã©tat WAN et je crÃ©erai un ticket pour l'Ã©quipe rÃ©seau."
     ]
   },
   'General IT Support': {
@@ -185,9 +173,9 @@ const TROUBLESHOOT_FLOWS = {
       "If not resolved, gather device logs or screenshots and I'll open a ticket for escalation."
     ],
     FR: [
-      "Veuillez décrire l'erreur exacte et quel appareil/modèle est affecté (POS, imprimante, écran). Pouvez-vous le fournir ?",
-      "Essayez de redémarrer l'appareil affecté. Le problème a-t-il disparu après le redémarrage ?",
-      "Si non résolu, recueillez les journaux ou les captures d'écran de l'appareil et j'ouvrirai un ticket d'escalade."
+      "Veuillez dÃ©crire l'erreur exacte et quel appareil/modÃ¨le est affectÃ© (POS, imprimante, Ã©cran). Pouvez-vous le fournir ?",
+      "Essayez de redÃ©marrer l'appareil affectÃ©. Le problÃ¨me a-t-il disparu aprÃ¨s le redÃ©marrage ?",
+      "Si non rÃ©solu, recueillez les journaux ou les captures d'Ã©cran de l'appareil et j'ouvrirai un ticket d'escalade."
     ]
   }
 };
@@ -196,19 +184,19 @@ function getTroubleshootDiagnosisText(category, lang = 'EN') {
   const map = {
     'Menu Management Aloha': {
       EN: "This looks like a POS terminal issue affecting the cashier or payment flow.",
-      FR: "Il semble s'agir d'un problème de terminal POS affectant la caisse ou le paiement."
+      FR: "Il semble s'agir d'un problÃ¨me de terminal POS affectant la caisse ou le paiement."
     },
     'Menu Management Red Biscuit': {
       EN: "This looks like a Red Biscuit content sync issue.",
-      FR: "Il semble s'agir d'un problème de synchronisation Red Biscuit."
+      FR: "Il semble s'agir d'un problÃ¨me de synchronisation Red Biscuit."
     },
     'Technical Issue': {
       EN: "This looks like a network or connectivity issue in the restaurant.",
-      FR: "Il semble s'agir d'un problème de réseau ou de connectivité au restaurant."
+      FR: "Il semble s'agir d'un problÃ¨me de rÃ©seau ou de connectivitÃ© au restaurant."
     },
     'General IT Support': {
       EN: "This looks like a general IT incident that needs step-by-step troubleshooting.",
-      FR: "Il semble s'agir d'un incident informatique général nécessitant un dépannage étape par étape."
+      FR: "Il semble s'agir d'un incident informatique gÃ©nÃ©ral nÃ©cessitant un dÃ©pannage Ã©tape par Ã©tape."
     }
   };
   const entry = map[category] || map['General IT Support'];
@@ -285,15 +273,15 @@ async function openAteraTicket(payload) {
 }
 
 async function queryAteraTicketsForWeb() {
-  const sessionData = JSON.parse(localStorage.getItem('KFC_CURRENT_SESSION') || '{}');
+  const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
   const guestInfo = getBestGuestInfo();
   const email = guestInfo?.email || sessionData.email || window.guest?.email || null;
 
   if (!email) {
     return askByLang(
-      'Veuillez vous inscrire et fournir une adresse email pour que je puisse vérifier vos tickets.',
-      'Veuillez vous inscrire et fournir une adresse email pour que je puisse vérifier vos tickets.',
-      'يرجى التسجيل وتقديم بريد إلكتروني حتى أتمكن من التحقق من تذاكرك.'
+      'Veuillez vous inscrire et fournir une adresse email pour que je puisse vÃ©rifier vos tickets.',
+      'Veuillez vous inscrire et fournir une adresse email pour que je puisse vÃ©rifier vos tickets.',
+      'ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªØ³Ø¬ÙŠÙ„ ÙˆØªÙ‚Ø¯ÙŠÙ… Ø¨Ø±ÙŠØ¯ Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠ Ø­ØªÙ‰ Ø£ØªÙ…ÙƒÙ† Ù…Ù† Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† ØªØ°Ø§ÙƒØ±Ùƒ.'
     );
   }
 
@@ -306,9 +294,9 @@ async function queryAteraTicketsForWeb() {
     if (!res.ok) {
       console.error('Atera ticket lookup failed', res.status);
       return askByLang(
-        'Impossible de récupérer vos tickets pour le moment. Réessayez plus tard.',
-        'Impossible de récupérer vos tickets pour le moment. Réessayez plus tard.',
-        'يتعذر استرداد التذاكر الخاصة بك الآن. يرجى المحاولة مرة أخرى لاحقًا.'
+        'Impossible de rÃ©cupÃ©rer vos tickets pour le moment. RÃ©essayez plus tard.',
+        'Impossible de rÃ©cupÃ©rer vos tickets pour le moment. RÃ©essayez plus tard.',
+        'ÙŠØªØ¹Ø°Ø± Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ø§Ù„ØªØ°Ø§ÙƒØ± Ø§Ù„Ø®Ø§ØµØ© Ø¨Ùƒ Ø§Ù„Ø¢Ù†. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰ Ù„Ø§Ø­Ù‚Ù‹Ø§.'
       );
     }
 
@@ -317,9 +305,9 @@ async function queryAteraTicketsForWeb() {
 
     if (!tickets || tickets.length === 0) {
       return askByLang(
-        'Aucun ticket trouvé pour cette adresse email.',
-        'Aucun ticket trouvé pour cette adresse email.',
-        'لم يتم العثور على أي تذاكر لهذا البريد الإلكتروني.'
+        'Aucun ticket trouvÃ© pour cette adresse email.',
+        'Aucun ticket trouvÃ© pour cette adresse email.',
+        'Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ø£ÙŠ ØªØ°Ø§ÙƒØ± Ù„Ù‡Ø°Ø§ Ø§Ù„Ø¨Ø±ÙŠØ¯ Ø§Ù„Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠ.'
       );
     }
 
@@ -328,16 +316,16 @@ async function queryAteraTicketsForWeb() {
       const status = ticket.status || ticket.TicketStatus || ticket.State || ticket.state || 'Inconnu';
       const title = ticket.TicketTitle || ticket.title || ticket.subject || ticket.summary || ticket.description || 'Sans objet';
       const created = ticket.createdAt || ticket.created_on || ticket.CreatedOn || ticket.CreatedAt || ticket.created || '';
-      return `• [${status}] ${title} (ID: ${id}${created ? ' — ' + created : ''})`;
+      return `â€¢ [${status}] ${title} (ID: ${id}${created ? ' â€” ' + created : ''})`;
     });
 
     return `<b>Vos tickets Atera :</b>\n${lines.join('\n')}`;
   } catch (err) {
     console.error('Atera ticket lookup error:', err);
     return askByLang(
-      'Erreur lors de la recherche de vos tickets. Veuillez réessayer plus tard.',
-      'Erreur lors de la recherche de vos tickets. Veuillez réessayer plus tard.',
-      'حدث خطأ أثناء البحث عن تذاكرك. يرجى المحاولة مرة أخرى لاحقًا.'
+      'Erreur lors de la recherche de vos tickets. Veuillez rÃ©essayer plus tard.',
+      'Erreur lors de la recherche de vos tickets. Veuillez rÃ©essayer plus tard.',
+      'Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø§Ù„Ø¨Ø­Ø« Ø¹Ù† ØªØ°Ø§ÙƒØ±Ùƒ. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰ Ù„Ø§Ø­Ù‚Ù‹Ø§.'
     );
   }
 }
@@ -369,7 +357,7 @@ async function logServiceRequest({ sessionId, name, room, text, priority = 'P4',
 
 // Function to sync guest state from session data
 function syncGuestStateFromSession() {
-  const sessionData = JSON.parse(localStorage.getItem('KFC_CURRENT_SESSION') || '{}');
+  const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
   if (sessionData.name && sessionData.room) {
     console.log(`[SYNC] Syncing guest state from session: ${sessionData.name} (${sessionData.room})`);
     guest.name = sessionData.name;
@@ -423,29 +411,29 @@ For service lot questions: explain whether it is routed to Helpdesk, Red Biscuit
 For urgent incidents: reassure the user that the request has been classified and will be treated quickly.
 
 FRENCH RESPONSE STYLE:
-Pour les incidents IT : décrivez la catégorie, le circuit de traitement et le délai SLA.
+Pour les incidents IT : dÃ©crivez la catÃ©gorie, le circuit de traitement et le dÃ©lai SLA.
 Pour les questions de lot de service : expliquez si la demande va au Helpdesk, Red Biscuit ou Aloha.
-Pour les incidents urgents : rassurez l'utilisateur que la demande est classée et traitée rapidement.
+Pour les incidents urgents : rassurez l'utilisateur que la demande est classÃ©e et traitÃ©e rapidement.
 
-Keep responses friendly, concise, and under 3-4 short paragraphs. If unsure, recommend contacting the KFC restaurant IT support desk. `;
+Keep responses friendly, concise, and under 3-4 short paragraphs. If unsure, recommend contacting the D4B restaurant IT support desk. `;
 
 // French system prompt (preferred when guest.lang === 'FR')
-const SYSTEM_PROMPT_FR = `Vous êtes l'assistant support IT de Digital4Business. Répondez en français; aidez les équipes de D4B, France, Tunisie et Maurice pour la classification des incidents, l'orientation vers le bon lot (Lot 1 Helpdesk, Lot 2 Red Biscuit, Lot 3 Aloha) et l'estimation des SLA (P1 à P4).
+const SYSTEM_PROMPT_FR = `Vous Ãªtes l'assistant support IT de Digital4Business. RÃ©pondez en franÃ§ais; aidez les Ã©quipes de D4B, France, Tunisie et Maurice pour la classification des incidents, l'orientation vers le bon lot (Lot 1 Helpdesk, Lot 2 Red Biscuit, Lot 3 Aloha) et l'estimation des SLA (P1 Ã  P4).
 
-Utilisez cette typologie comme référence pour catégoriser les incidents :
-- CRITIQUE / P1 : incidents bloquants comme fermeture de restaurant, terminaux ou caisse indisponibles, panne réseau, ou toute situation empêchant le service.
-- URGENT / P2 : incidents dégradants mais partiellement opérationnels comme erreurs d'imprimante, échecs de connexion, réseau intermittent, problèmes KDS, synchronisation du menu ou erreur de caisse.
+Utilisez cette typologie comme rÃ©fÃ©rence pour catÃ©goriser les incidents :
+- CRITIQUE / P1 : incidents bloquants comme fermeture de restaurant, terminaux ou caisse indisponibles, panne rÃ©seau, ou toute situation empÃªchant le service.
+- URGENT / P2 : incidents dÃ©gradants mais partiellement opÃ©rationnels comme erreurs d'imprimante, Ã©checs de connexion, rÃ©seau intermittent, problÃ¨mes KDS, synchronisation du menu ou erreur de caisse.
 - MOYEN / P3 : incidents BackOffice ou administratifs tels que rapports, configuration, formation, support d'application non urgent ou surveillance.
-- FAIBLE / P4 : demandes mineures, questions de documentation, conseils généraux ou requêtes non critiques pour le service.
+- FAIBLE / P4 : demandes mineures, questions de documentation, conseils gÃ©nÃ©raux ou requÃªtes non critiques pour le service.
 
-Pour les incidents P1, P2, P3 et P4, tentez d'abord un dépannage guidé et aidez l'utilisateur à résoudre le problème. N'ouvrez un ticket Atera que si le problème persiste après ces étapes ou si l'utilisateur confirme qu'il n'est pas résolu.
+Pour les incidents P1, P2, P3 et P4, tentez d'abord un dÃ©pannage guidÃ© et aidez l'utilisateur Ã  rÃ©soudre le problÃ¨me. N'ouvrez un ticket Atera que si le problÃ¨me persiste aprÃ¨s ces Ã©tapes ou si l'utilisateur confirme qu'il n'est pas rÃ©solu.
 
 
-Ne répondez pas aux questions qui ne sont pas liées aux problèmes IT. Si l'utilisateur pose une question non liée, expliquez poliment que vous ne traitez que les incidents de support IT en restaurant et demandez-lui de décrire son problème.
+Ne rÃ©pondez pas aux questions qui ne sont pas liÃ©es aux problÃ¨mes IT. Si l'utilisateur pose une question non liÃ©e, expliquez poliment que vous ne traitez que les incidents de support IT en restaurant et demandez-lui de dÃ©crire son problÃ¨me.
 
-Si l'utilisateur répond par un simple 'oui' pendant le dépannage, n'interprétez pas cela comme une résolution du problème tant qu'il n'indique pas explicitement que c'est résolu.
+Si l'utilisateur rÃ©pond par un simple 'oui' pendant le dÃ©pannage, n'interprÃ©tez pas cela comme une rÃ©solution du problÃ¨me tant qu'il n'indique pas explicitement que c'est rÃ©solu.
 
-Concentrez-vous sur l'identification du lot approprié, la priorité (P1 critique à P4 faible), et fournissez des étapes de dépannage concises avant d'ouvrir un ticket. Utilisez un ton professionnel, clair et courtois. Ne pas utiliser de markdown ou d'emojis.`;
+Concentrez-vous sur l'identification du lot appropriÃ©, la prioritÃ© (P1 critique Ã  P4 faible), et fournissez des Ã©tapes de dÃ©pannage concises avant d'ouvrir un ticket. Utilisez un ton professionnel, clair et courtois. Ne pas utiliser de markdown ou d'emojis.`;
 
 
 // --- BEHAVIOR CONFIGURATION ---
@@ -529,11 +517,11 @@ function extractGuestInfo(message) {
   // "slim 995", "SLIM, 995", "name slim table 995", "je m'appelle slim, table 995"
   // "table 998 name DALI", "table 998 nom DALI"
   const combos = [
-    /^(?:my\s+name\s+is|je\s*m'?appelle|c['']est|nom|name)\s+(.+?)[,\s]+(?:room|chambre|table|غرفة)?\s*(\d{3,4})$/i,
-    /^(.+?)[,\s]+(?:room|chambre|table|غرفة)\s*(\d{3,4})$/i,
+    /^(?:my\s+name\s+is|je\s*m'?appelle|c['']est|nom|name)\s+(.+?)[,\s]+(?:room|chambre|table|ØºØ±ÙØ©)?\s*(\d{3,4})$/i,
+    /^(.+?)[,\s]+(?:room|chambre|table|ØºØ±ÙØ©)\s*(\d{3,4})$/i,
     /^([a-zA-Z\u00C0-\u017F\u0600-\u06FF\s]+)\s+(\d{3,4})$/u,
-    /^(?:room|chambre|table|غرفة)\s*(\d{3,4})[,\s]+(?:name|nom)\s+(.+)$/i,
-    /^(?:room|chambre|table|غرفة)\s*(\d{3,4})[,\s]+(.+)$/i
+    /^(?:room|chambre|table|ØºØ±ÙØ©)\s*(\d{3,4})[,\s]+(?:name|nom)\s+(.+)$/i,
+    /^(?:room|chambre|table|ØºØ±ÙØ©)\s*(\d{3,4})[,\s]+(.+)$/i
   ];
   for (const re of combos) {
     const m = text.match(re);
@@ -567,7 +555,7 @@ function extractGuestInfo(message) {
   }
 
   // table only
-  const roomOnly = text.match(/^(?:room|chambre|table|غرفة)\s*(\d{3,4})$/i);
+  const roomOnly = text.match(/^(?:room|chambre|table|ØºØ±ÙØ©)\s*(\d{3,4})$/i);
   if (roomOnly) {
     const room = sanitizeRoomInput(roomOnly[1]);
     if (room) return { name: null, room, confidence: 0.9 };
@@ -739,7 +727,7 @@ function getBestGuestInfo() {
   
   // Fallback to session data if memory is empty
   if (!result.name) {
-    const sessionData = JSON.parse(localStorage.getItem('KFC_CURRENT_SESSION') || '{}');
+    const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
     if (sessionData.name) {
       result.name = sessionData.name;
       result.nameSource = 'session';
@@ -748,7 +736,7 @@ function getBestGuestInfo() {
   }
   
   if (!result.room) {
-    const sessionData = JSON.parse(localStorage.getItem('KFC_CURRENT_SESSION') || '{}');
+    const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
     if (sessionData.room) {
       result.room = sessionData.room;
       result.roomSource = 'session';
@@ -796,9 +784,9 @@ function isInfoRefusal(message) {
   if (!message) return false;
   const lower = message.toLowerCase();
   const refusalPatterns = [
-    /no\b/, /non\b/, /later/, /après/, /not now/, /pas maintenant/,
+    /no\b/, /non\b/, /later/, /aprÃ¨s/, /not now/, /pas maintenant/,
     /don't want/, /ne veux pas/, /refuse/, /refuser/, /skip/, /passer/,
-    /maybe later/, /peut-être plus tard/, /not yet/, /pas encore/,
+    /maybe later/, /peut-Ãªtre plus tard/, /not yet/, /pas encore/,
     /i don't want to/, /je ne veux pas/, /not right now/, /pas maintenant/
   ];
   return refusalPatterns.some((p) => p.test(lower));
@@ -818,32 +806,22 @@ function incrementInfoRequestCount() {
 
 // --- LANGUAGE DETECTION ---
 function detectLanguage(text) {
-  if (!text) return "EN";
-  
-  const frenchPatterns = [/bonjour/, /merci/, /s'il vous plaît/, /comment/, /où/, /quand/, /pourquoi/];
-  const arabicPatterns = [/مرحبا/, /شكرا/, /من فضلك/, /كيف/, /أين/, /متى/, /لماذا/];
-  
-  if (frenchPatterns.some(p => p.test(text.toLowerCase()))) return "FR";
-  if (arabicPatterns.some(p => p.test(text.toLowerCase()))) return "AR";
-  
-  return guest.lang || "EN";
+  return "FR";
 }
 
 function askByLang(english, french, arabic) {
-  if (guest.lang === "FR") return french;
-  if (guest.lang === "AR") return arabic;
-  return english;
+  return french;
 }
 
 // --- INTENT CLASSIFICATION ---
 function classifyIntent(message) {
   const lowerMessage = message.toLowerCase();
-  const greetingPatterns = [/bonjour/, /hello/, /salut/, /hi/, /مرحبا/, /أهلا/];
+  const greetingPatterns = [/bonjour/, /hello/, /salut/, /hi/, /Ù…Ø±Ø­Ø¨Ø§/, /Ø£Ù‡Ù„Ø§/];
   if (greetingPatterns.some(pattern => pattern.test(lowerMessage))) {
     return { type: "greeting", urgency: "normal" };
   }
 
-  const thanksPatterns = [/merci/, /thanks/, /thank you/, /شكرا/, /شكراً/];
+  const thanksPatterns = [/merci/, /thanks/, /thank you/, /Ø´ÙƒØ±Ø§/, /Ø´ÙƒØ±Ø§Ù‹/];
   if (thanksPatterns.some(pattern => pattern.test(lowerMessage))) {
     return { type: "confirmation", urgency: "normal" };
   }
@@ -853,7 +831,7 @@ function classifyIntent(message) {
     return { type: "name_room", urgency: "normal" };
   }
 
-  const incidentPatterns = [/incident|panne|probl[eè]me|support|aide|help|urgent|urgence|erreur|bug|caisse|pos|aloha|ncr|réseau|wifi|internet|connexion|imprimante|terminal|ticket|login|mot de passe|paiement/];
+  const incidentPatterns = [/incident|panne|probl[eÃ¨]me|support|aide|help|urgent|urgence|erreur|bug|caisse|pos|aloha|ncr|rÃ©seau|wifi|internet|connexion|imprimante|terminal|ticket|login|mot de passe|paiement/];
   if (incidentPatterns.some(pattern => pattern.test(lowerMessage))) {
     return { type: "incident", urgency: IT_CRITICAL.test(lowerMessage) ? "high" : "normal" };
   }
@@ -871,10 +849,10 @@ function classifyRequest(message) {
   if (/\b(aloha|ncr|pos|caisse|terminal|kds|tpv)\b/.test(lowerMessage)) {
     return { category: "Menu Management Aloha", urgency: "high", serviceLot: "Lot 3 - Menu Management Aloha" };
   }
-  if (/\b(red biscuit|gestion du menu|mise à jour du menu|promotion|promo|menu)\b/.test(lowerMessage)) {
+  if (/\b(red biscuit|gestion du menu|mise Ã  jour du menu|promotion|promo|menu)\b/.test(lowerMessage)) {
     return { category: "Menu Management Red Biscuit", urgency: "normal", serviceLot: "Lot 2 - Menu Management Red Biscuit" };
   }
-  if (/\b(r[eé]seau|wifi|internet|connexion|imprimante|printer|[ée]cran|terminal|logiciel|software|mot de passe|login|authentification|paiement)\b/.test(lowerMessage)) {
+  if (/\b(r[eÃ©]seau|wifi|internet|connexion|imprimante|printer|[Ã©e]cran|terminal|logiciel|software|mot de passe|login|authentification|paiement)\b/.test(lowerMessage)) {
     return { category: "Technical Issue", urgency: "normal", serviceLot: "Lot 1 - Helpdesk / Service Desk" };
   }
 
@@ -883,7 +861,7 @@ function classifyRequest(message) {
 
 function isServiceRequest(msg) {
   const lower = msg.toLowerCase();
-  return /incident|panne|probl[eè]me|support|aide|help|urgent|urgence|erreur|bug|ticket|caisse|pos|aloha|ncr|red biscuit|réseau|wifi|internet|connexion|imprimante|terminal|login|mot de passe|paiement/.test(lower);
+  return /incident|panne|probl[eÃ¨]me|support|aide|help|urgent|urgence|erreur|bug|ticket|caisse|pos|aloha|ncr|red biscuit|rÃ©seau|wifi|internet|connexion|imprimante|terminal|login|mot de passe|paiement/.test(lower);
 }
 
 function summarizeRequest(msg) {
@@ -893,29 +871,29 @@ function summarizeRequest(msg) {
   let details = msg.trim();
   let priority = "P4";
 
-  if (/\b(system down|syst[eè]me down|caisse bloqu[eé]e|caisse en panne|paiement refus[eé]|paiement impossible|transaction refus[eé]|r[eé]seau coup[eé]|connexion perdue|wifi down|internet down|[ée]lectricit[eé]|alimentation|panne [ée]lectrique|incident critique|incident de s[eé]curit[eé]|danger|fum[eé]e|gaz|serveur|coupure de courant|écran noir|écran blanc|tactile figé|non d[eé]marre|d[eé]marrage impossible|erreur critique|bloqu[eé]|fig[eé])\b/.test(normalizedMsg)) {
+  if (/\b(system down|syst[eÃ¨]me down|caisse bloqu[eÃ©]e|caisse en panne|paiement refus[eÃ©]|paiement impossible|transaction refus[eÃ©]|r[eÃ©]seau coup[eÃ©]|connexion perdue|wifi down|internet down|[Ã©e]lectricit[eÃ©]|alimentation|panne [Ã©e]lectrique|incident critique|incident de s[eÃ©]curit[eÃ©]|danger|fum[eÃ©]e|gaz|serveur|coupure de courant|Ã©cran noir|Ã©cran blanc|tactile figÃ©|non d[eÃ©]marre|d[eÃ©]marrage impossible|erreur critique|bloqu[eÃ©]|fig[eÃ©])\b/.test(normalizedMsg)) {
     priority = "P1";
-  } else if (/\b(erreur|bug|login|mot de passe|authentification|imprimante|printer|kds|terminal|pos|ncr|aloha|paiement|tpe|tactile|mise à jour|sync|synchronisation|promo|promotion|mise en ligne|connexion perdue|pas d'affichage|écran figé|erreur générale|message d'erreur|timeout|échec|echec|d[ée]marrage|non r[eé]pond|interruption)\b/.test(normalizedMsg)) {
+  } else if (/\b(erreur|bug|login|mot de passe|authentification|imprimante|printer|kds|terminal|pos|ncr|aloha|paiement|tpe|tactile|mise Ã  jour|sync|synchronisation|promo|promotion|mise en ligne|connexion perdue|pas d'affichage|Ã©cran figÃ©|erreur gÃ©nÃ©rale|message d'erreur|timeout|Ã©chec|echec|d[Ã©e]marrage|non r[eÃ©]pond|interruption)\b/.test(normalizedMsg)) {
     priority = "P2";
-  } else if (/\b(configuration|acc[eè]s|acc[eè]s demande|rapport|report|formation|documentation|demande d'information|infos|information|question|param[eè]trage|utilisation)\b/.test(normalizedMsg)) {
+  } else if (/\b(configuration|acc[eÃ¨]s|acc[eÃ¨]s demande|rapport|report|formation|documentation|demande d'information|infos|information|question|param[eÃ¨]trage|utilisation)\b/.test(normalizedMsg)) {
     priority = "P3";
   }
 
   if (/\b(aloha|ncr|pos|caisse|terminal|kds|tpv)\b/.test(normalizedMsg)) {
     category = "Menu Management Aloha";
     serviceLot = "Lot 3 - Menu Management Aloha";
-  } else if (/\b(red biscuit|gestion du menu|mise à jour du menu|promotion|promo|menu|redbiscuit|rb)\b/.test(normalizedMsg)) {
+  } else if (/\b(red biscuit|gestion du menu|mise Ã  jour du menu|promotion|promo|menu|redbiscuit|rb)\b/.test(normalizedMsg)) {
     category = "Menu Management Red Biscuit";
     serviceLot = "Lot 2 - Menu Management Red Biscuit";
-  } else if (/\b([ée]cran|affichage|pas d'affichage|no display|écran noir|écran blanc|tactile figé|ecran figé|éteint|ne s'allume plus|ordinateur|pc|portable|bureau windows|serveur|tablette|borne|speaker box|câblage|cable|écran client|menu board)\b/.test(normalizedMsg)) {
+  } else if (/\b([Ã©e]cran|affichage|pas d'affichage|no display|Ã©cran noir|Ã©cran blanc|tactile figÃ©|ecran figÃ©|Ã©teint|ne s'allume plus|ordinateur|pc|portable|bureau windows|serveur|tablette|borne|speaker box|cÃ¢blage|cable|Ã©cran client|menu board)\b/.test(normalizedMsg)) {
     category = "General IT Support";
     serviceLot = "Lot 1 - Helpdesk / Service Desk";
-  } else if (/\b(r[eé]seau|wifi|internet|connexion|routeur|switch|lan|wan|imprimante|printer|logiciel|software|mot de passe|login|authentification|paiement|voip|téléphonie|monitoring|garou|pulse|deliverect|kvm)\b/.test(normalizedMsg)) {
+  } else if (/\b(r[eÃ©]seau|wifi|internet|connexion|routeur|switch|lan|wan|imprimante|printer|logiciel|software|mot de passe|login|authentification|paiement|voip|tÃ©lÃ©phonie|monitoring|garou|pulse|deliverect|kvm)\b/.test(normalizedMsg)) {
     category = "Technical Issue";
     serviceLot = "Lot 1 - Helpdesk / Service Desk";
   }
 
-  if (/\b(screen black|[ée]cran noir|pas d'affichage|no display|écran blanc)\b/.test(normalizedMsg)) {
+  if (/\b(screen black|[Ã©e]cran noir|pas d'affichage|no display|Ã©cran blanc)\b/.test(normalizedMsg)) {
     priority = "P1";
   }
 
@@ -1006,20 +984,12 @@ function handleFAQRequest(text, category, details) {
   const lowerText = text.toLowerCase();
   
   // Menu/order/promotions are not supported in this IT-support chatbot.
-  if (/menu|bucket|chicken|wing|tender|burger|combo|menu|kfc|order|promo|promotion/.test(lowerText)) {
-    return askByLang(
-      "This chatbot provides IT support for KFC staff. For menu, promotions, or ordering questions please use the KFC customer channels.",
-      "Ce chatbot fournit un support IT pour le personnel KFC. Pour les questions liées au menu, promotions ou commandes, veuillez utiliser les canaux clients KFC.",
-      "هذه الدردشة تقدم دعمًا فنيًا لموظفي KFC. لأسئلة القائمة أو العروض أو الطلبات، يرجى استخدام قنوات خدمة العملاء لدى KFC."
-    );
+  if (/menu|bucket|chicken|wing|tender|burger|combo|menu|order|promo|promotion/.test(lowerText)) {
+    return "Ce chatbot fournit un support IT pour D4B. Pour les questions liÃ©es au menu, aux promotions ou aux commandes, veuillez utiliser les canaux clients appropriÃ©s.";
   }
   
   // General information
-  return askByLang(
-    "I'd be happy to help you with that! Let me check our information for you.",
-    "Je serais ravi de vous aider avec cela ! Laissez-moi vérifier nos informations pour vous.",
-    "سأكون سعيداً بمساعدتك في ذلك! دعني أتحقق من معلوماتنا لك."
-  );
+  return "Je serais ravi de vous aider avec cela ! Laissez-moi vÃ©rifier nos informations pour vous.";
 }
 
 // --- EMPATHY RESPONSES ---
@@ -1039,14 +1009,14 @@ function respondWithEmpathy(message, classification) {
       if (hasInfo) {
         return askByLang(
           " I'm so sorry to hear that. I've marked this as urgent and will notify our team right away. A member of our staff will be there in just a few minutes. Please stay calm, we're here to help.",
-          " Je suis vraiment désolé d'apprendre cela. J'ai marqué votre demande comme urgente et je vais notifier notre équipe immédiatement. Un membre de notre personnel sera là dans quelques minutes. Restez calme, nous sommes là pour vous aider.",
-          " أنا آسف جداً لسماع هذا. لقد وضعت طلبك كأولوية عالية وسأقوم بإخطار فريقنا فوراً. سيكون أحد موظفينا هناك في غضون دقائق قليلة. ابق هادئاً، نحن هنا لمساعدتك."
+          " Je suis vraiment dÃ©solÃ© d'apprendre cela. J'ai marquÃ© votre demande comme urgente et je vais notifier notre Ã©quipe immÃ©diatement. Un membre de notre personnel sera lÃ  dans quelques minutes. Restez calme, nous sommes lÃ  pour vous aider.",
+          " Ø£Ù†Ø§ Ø¢Ø³Ù Ø¬Ø¯Ø§Ù‹ Ù„Ø³Ù…Ø§Ø¹ Ù‡Ø°Ø§. Ù„Ù‚Ø¯ ÙˆØ¶Ø¹Øª Ø·Ù„Ø¨Ùƒ ÙƒØ£ÙˆÙ„ÙˆÙŠØ© Ø¹Ø§Ù„ÙŠØ© ÙˆØ³Ø£Ù‚ÙˆÙ… Ø¨Ø¥Ø®Ø·Ø§Ø± ÙØ±ÙŠÙ‚Ù†Ø§ ÙÙˆØ±Ø§Ù‹. Ø³ÙŠÙƒÙˆÙ† Ø£Ø­Ø¯ Ù…ÙˆØ¸ÙÙŠÙ†Ø§ Ù‡Ù†Ø§Ùƒ ÙÙŠ ØºØ¶ÙˆÙ† Ø¯Ù‚Ø§Ø¦Ù‚ Ù‚Ù„ÙŠÙ„Ø©. Ø§Ø¨Ù‚ Ù‡Ø§Ø¯Ø¦Ø§Ù‹ØŒ Ù†Ø­Ù† Ù‡Ù†Ø§ Ù„Ù…Ø³Ø§Ø¹Ø¯ØªÙƒ."
         );
       } else {
         return askByLang(
           " I'm so sorry to hear that. Could you please give me your name and table number immediately so I can send help right away?",
-          " Je suis vraiment désolé d'apprendre cela. Pourriez-vous me donner votre nom et numéro de table immédiatement pour que je puisse envoyer de l'aide ?",
-          " أنا آسف جداً لسماع هذا. هل يمكنك إعطائي اسمك ورقم طاولتك فوراً حتى أتمكن من إرسال المساعدة؟"
+          " Je suis vraiment dÃ©solÃ© d'apprendre cela. Pourriez-vous me donner votre nom et numÃ©ro de table immÃ©diatement pour que je puisse envoyer de l'aide ?",
+          " Ø£Ù†Ø§ Ø¢Ø³Ù Ø¬Ø¯Ø§Ù‹ Ù„Ø³Ù…Ø§Ø¹ Ù‡Ø°Ø§. Ù‡Ù„ ÙŠÙ…ÙƒÙ†Ùƒ Ø¥Ø¹Ø·Ø§Ø¦ÙŠ Ø§Ø³Ù…Ùƒ ÙˆØ±Ù‚Ù… Ø·Ø§ÙˆÙ„ØªÙƒ ÙÙˆØ±Ø§Ù‹ Ø­ØªÙ‰ Ø£ØªÙ…ÙƒÙ† Ù…Ù† Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯Ø©ØŸ"
         );
       }
     }
@@ -1060,14 +1030,14 @@ function respondWithEmpathy(message, classification) {
     if (hasInfo) {
       return askByLang(
         "I completely understand how inconvenient this must be. I'll make sure this is taken care of quickly.",
-        "Je comprends parfaitement à quel point cela doit être gênant. Je vais m'assurer que cela soit pris en charge rapidement.",
-        "أفهم تماماً مدى الإزعاج الذي يسببه هذا. سأتأكد من معالجته بسرعة."
+        "Je comprends parfaitement Ã  quel point cela doit Ãªtre gÃªnant. Je vais m'assurer que cela soit pris en charge rapidement.",
+        "Ø£ÙÙ‡Ù… ØªÙ…Ø§Ù…Ø§Ù‹ Ù…Ø¯Ù‰ Ø§Ù„Ø¥Ø²Ø¹Ø§Ø¬ Ø§Ù„Ø°ÙŠ ÙŠØ³Ø¨Ø¨Ù‡ Ù‡Ø°Ø§. Ø³Ø£ØªØ£ÙƒØ¯ Ù…Ù† Ù…Ø¹Ø§Ù„Ø¬ØªÙ‡ Ø¨Ø³Ø±Ø¹Ø©."
       );
     } else {
       return askByLang(
         "I completely understand how inconvenient this must be. Could you please give me your name and table number so I can take care of this quickly?",
-        "Je comprends parfaitement à quel point cela doit être gênant. Pourriez-vous me donner votre nom et numéro de table pour que je puisse m'en occuper rapidement ?",
-        "أفهم تماماً مدى الإزعاج الذي يسببه هذا. هل يمكنك إعطائي اسمك ورقم طاولتك حتى أتمكن من معالجته بسرعة؟"
+        "Je comprends parfaitement Ã  quel point cela doit Ãªtre gÃªnant. Pourriez-vous me donner votre nom et numÃ©ro de table pour que je puisse m'en occuper rapidement ?",
+        "Ø£ÙÙ‡Ù… ØªÙ…Ø§Ù…Ø§Ù‹ Ù…Ø¯Ù‰ Ø§Ù„Ø¥Ø²Ø¹Ø§Ø¬ Ø§Ù„Ø°ÙŠ ÙŠØ³Ø¨Ø¨Ù‡ Ù‡Ø°Ø§. Ù‡Ù„ ÙŠÙ…ÙƒÙ†Ùƒ Ø¥Ø¹Ø·Ø§Ø¦ÙŠ Ø§Ø³Ù…Ùƒ ÙˆØ±Ù‚Ù… Ø·Ø§ÙˆÙ„ØªÙƒ Ø­ØªÙ‰ Ø£ØªÙ…ÙƒÙ† Ù…Ù† Ù…Ø¹Ø§Ù„Ø¬ØªÙ‡ Ø¨Ø³Ø±Ø¹Ø©ØŸ"
       );
     }
   }
@@ -1075,15 +1045,15 @@ function respondWithEmpathy(message, classification) {
   // General polite responses
   if (hasInfo) {
     return askByLang(
-      "Perfect! I'll take care of this right away. 😊",
-      "Parfait ! Je vais m'occuper de cela immédiatement. 😊",
-      "ممتاز! سأقوم بالاهتمام بهذا فوراً. 😊"
+      "Perfect! I'll take care of this right away. ðŸ˜Š",
+      "Parfait ! Je vais m'occuper de cela immÃ©diatement. ðŸ˜Š",
+      "Ù…Ù…ØªØ§Ø²! Ø³Ø£Ù‚ÙˆÙ… Ø¨Ø§Ù„Ø§Ù‡ØªÙ…Ø§Ù… Ø¨Ù‡Ø°Ø§ ÙÙˆØ±Ø§Ù‹. ðŸ˜Š"
     );
   } else {
     return askByLang(
       "Of course, I can take care of this. Could you please give me your name and table number?",
-      "Bien sûr, je peux m'occuper de cela. Pourriez-vous me donner votre nom et numéro de table, s'il vous plaît ?",
-      "بالطبع، يمكنني الاهتمام بهذا. هل يمكنك إعطائي اسمك ورقم طاولتك من فضلك؟"
+      "Bien sÃ»r, je peux m'occuper de cela. Pourriez-vous me donner votre nom et numÃ©ro de table, s'il vous plaÃ®t ?",
+      "Ø¨Ø§Ù„Ø·Ø¨Ø¹ØŒ ÙŠÙ…ÙƒÙ†Ù†ÙŠ Ø§Ù„Ø§Ù‡ØªÙ…Ø§Ù… Ø¨Ù‡Ø°Ø§. Ù‡Ù„ ÙŠÙ…ÙƒÙ†Ùƒ Ø¥Ø¹Ø·Ø§Ø¦ÙŠ Ø§Ø³Ù…Ùƒ ÙˆØ±Ù‚Ù… Ø·Ø§ÙˆÙ„ØªÙƒ Ù…Ù† ÙØ¶Ù„ÙƒØŸ"
     );
   }
 }
@@ -1093,19 +1063,19 @@ function getVariedResponse(type, context = {}) {
   const responses = {
     missingInfo: {
       EN: [
-        "Hmm, I don't see your table number right now — mind sharing it again, just in case? 😊",
+        "Hmm, I don't see your table number right now â€” mind sharing it again, just in case? ðŸ˜Š",
         "Could you remind me of your name and table number? I want to make sure I get this right!",
         "I'd love to help! Just need your name and table number to get started."
       ],
       FR: [
-        "Hmm, je ne vois pas votre table pour le moment — pouvez-vous me la rappeler, au cas où ? 😊",
-        "Pourriez-vous me rappeler votre nom et numéro de table ? Je veux m'assurer de bien faire les choses !",
-        "J'aimerais vous aider ! J'ai juste besoin de votre nom et numéro de table pour commencer."
+        "Hmm, je ne vois pas votre table pour le moment â€” pouvez-vous me la rappeler, au cas oÃ¹ ? ðŸ˜Š",
+        "Pourriez-vous me rappeler votre nom et numÃ©ro de table ? Je veux m'assurer de bien faire les choses !",
+        "J'aimerais vous aider ! J'ai juste besoin de votre nom et numÃ©ro de table pour commencer."
       ],
       AR: [
-        "همم، لا أرى طاولتك الآن — هل يمكنك تذكيري بها، فقط في حالة؟ 😊",
-        "هل يمكنك تذكيري باسمك ورقم طاولتك؟ أريد التأكد من أنني أفعل الشيء الصحيح!",
-        "أود مساعدتك! أحتاج فقط اسمك ورقم طاولتك للبدء."
+        "Ù‡Ù…Ù…ØŒ Ù„Ø§ Ø£Ø±Ù‰ Ø·Ø§ÙˆÙ„ØªÙƒ Ø§Ù„Ø¢Ù† â€” Ù‡Ù„ ÙŠÙ…ÙƒÙ†Ùƒ ØªØ°ÙƒÙŠØ±ÙŠ Ø¨Ù‡Ø§ØŒ ÙÙ‚Ø· ÙÙŠ Ø­Ø§Ù„Ø©ØŸ ðŸ˜Š",
+        "Ù‡Ù„ ÙŠÙ…ÙƒÙ†Ùƒ ØªØ°ÙƒÙŠØ±ÙŠ Ø¨Ø§Ø³Ù…Ùƒ ÙˆØ±Ù‚Ù… Ø·Ø§ÙˆÙ„ØªÙƒØŸ Ø£Ø±ÙŠØ¯ Ø§Ù„ØªØ£ÙƒØ¯ Ù…Ù† Ø£Ù†Ù†ÙŠ Ø£ÙØ¹Ù„ Ø§Ù„Ø´ÙŠØ¡ Ø§Ù„ØµØ­ÙŠØ­!",
+        "Ø£ÙˆØ¯ Ù…Ø³Ø§Ø¹Ø¯ØªÙƒ! Ø£Ø­ØªØ§Ø¬ ÙÙ‚Ø· Ø§Ø³Ù…Ùƒ ÙˆØ±Ù‚Ù… Ø·Ø§ÙˆÙ„ØªÙƒ Ù„Ù„Ø¨Ø¯Ø¡."
       ]
     },
     sick: {
@@ -1115,63 +1085,63 @@ function getVariedResponse(type, context = {}) {
         "I hope you feel better soon! Would you like me to notify the restaurant team for medical assistance?"
       ],
       FR: [
-        "Je suis désolé d'apprendre que vous ne vous sentez pas bien. Voulez-vous que je demande une aide médicale ou que je contacte notre équipe ?",
-        "Ce n'est pas bon ! Dois-je organiser une aide médicale ou vous apporter de l'eau et des analgésiques ?",
-        "J'espère que vous vous sentirez mieux bientôt ! Voulez-vous que je prévienne l'équipe du restaurant pour une aide médicale ?"
+        "Je suis dÃ©solÃ© d'apprendre que vous ne vous sentez pas bien. Voulez-vous que je demande une aide mÃ©dicale ou que je contacte notre Ã©quipe ?",
+        "Ce n'est pas bon ! Dois-je organiser une aide mÃ©dicale ou vous apporter de l'eau et des analgÃ©siques ?",
+        "J'espÃ¨re que vous vous sentirez mieux bientÃ´t ! Voulez-vous que je prÃ©vienne l'Ã©quipe du restaurant pour une aide mÃ©dicale ?"
       ],
       AR: [
-        "أنا آسف لسماع أنك لا تشعر بالراحة. هل تريد مني ترتيب مساعدة طبية أو إبلاغ فريقنا؟",
-        "هذا ليس جيداً! هل يجب علي ترتيب مساعدة طبية أو إحضار ماء ومسكنات لك؟",
-        "أتمنى أن تشعر بتحسن قريباً! هل تريد مني إبلاغ فريق المطعم للحصول على مساعدة طبية؟"
+        "Ø£Ù†Ø§ Ø¢Ø³Ù Ù„Ø³Ù…Ø§Ø¹ Ø£Ù†Ùƒ Ù„Ø§ ØªØ´Ø¹Ø± Ø¨Ø§Ù„Ø±Ø§Ø­Ø©. Ù‡Ù„ ØªØ±ÙŠØ¯ Ù…Ù†ÙŠ ØªØ±ØªÙŠØ¨ Ù…Ø³Ø§Ø¹Ø¯Ø© Ø·Ø¨ÙŠØ© Ø£Ùˆ Ø¥Ø¨Ù„Ø§Øº ÙØ±ÙŠÙ‚Ù†Ø§ØŸ",
+        "Ù‡Ø°Ø§ Ù„ÙŠØ³ Ø¬ÙŠØ¯Ø§Ù‹! Ù‡Ù„ ÙŠØ¬Ø¨ Ø¹Ù„ÙŠ ØªØ±ØªÙŠØ¨ Ù…Ø³Ø§Ø¹Ø¯Ø© Ø·Ø¨ÙŠØ© Ø£Ùˆ Ø¥Ø­Ø¶Ø§Ø± Ù…Ø§Ø¡ ÙˆÙ…Ø³ÙƒÙ†Ø§Øª Ù„ÙƒØŸ",
+        "Ø£ØªÙ…Ù†Ù‰ Ø£Ù† ØªØ´Ø¹Ø± Ø¨ØªØ­Ø³Ù† Ù‚Ø±ÙŠØ¨Ø§Ù‹! Ù‡Ù„ ØªØ±ÙŠØ¯ Ù…Ù†ÙŠ Ø¥Ø¨Ù„Ø§Øº ÙØ±ÙŠÙ‚ Ø§Ù„Ù…Ø·Ø¹Ù… Ù„Ù„Ø­ØµÙˆÙ„ Ø¹Ù„Ù‰ Ù…Ø³Ø§Ø¹Ø¯Ø© Ø·Ø¨ÙŠØ©ØŸ"
       ]
     },
     hungry: {
         EN: [
-          "This chatbot handles IT support for KFC staff. For food orders or menu questions please use the restaurant ordering channels.",
+          "This chatbot handles IT support for D4B staff. For food orders or menu questions please use the restaurant ordering channels.",
           "I can help with IT incidents, not with orders. Tell me about the technical issue you're facing."
         ],
         FR: [
-          "Ce chatbot gère le support IT pour le personnel KFC. Pour les commandes ou questions de menu, utilisez les canaux de commande du restaurant.",
-          "Je peux aider pour des incidents IT, pas pour les commandes. Parlez-moi du problème technique que vous rencontrez."
+          "Ce chatbot gÃ¨re le support IT pour le personnel D4B. Pour les commandes ou questions de menu, utilisez les canaux de commande du restaurant.",
+          "Je peux aider pour des incidents IT, pas pour les commandes. Parlez-moi du problÃ¨me technique que vous rencontrez."
         ],
         AR: [
-          "هذه الدردشة خاصة بدعم تكنولوجيا المعلومات لموظفي KFC. لطلبات الطعام أو أسئلة القائمة يرجى استخدام قنوات الطلب في المطعم.",
-          "يمكنني المساعدة في الحوادث التقنية، وليس في الطلبات. أخبرني عن المشكلة التقنية التي تواجهها."
+          "Ù‡Ø°Ù‡ Ø§Ù„Ø¯Ø±Ø¯Ø´Ø© Ø®Ø§ØµØ© Ø¨Ø¯Ø¹Ù… ØªÙƒÙ†ÙˆÙ„ÙˆØ¬ÙŠØ§ Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ù„Ù…ÙˆØ¸ÙÙŠ D4B. Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ø·Ø¹Ø§Ù… Ø£Ùˆ Ø£Ø³Ø¦Ù„Ø© Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© ÙŠØ±Ø¬Ù‰ Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‚Ù†ÙˆØ§Øª Ø§Ù„Ø·Ù„Ø¨ ÙÙŠ Ø§Ù„Ù…Ø·Ø¹Ù….",
+          "ÙŠÙ…ÙƒÙ†Ù†ÙŠ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯Ø© ÙÙŠ Ø§Ù„Ø­ÙˆØ§Ø¯Ø« Ø§Ù„ØªÙ‚Ù†ÙŠØ©ØŒ ÙˆÙ„ÙŠØ³ ÙÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª. Ø£Ø®Ø¨Ø±Ù†ÙŠ Ø¹Ù† Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ø§Ù„ØªÙ‚Ù†ÙŠØ© Ø§Ù„ØªÙŠ ØªÙˆØ§Ø¬Ù‡Ù‡Ø§."
         ]
     },
     menu: {
         EN: [
-          "Menu and ordering are not supported here. This assistant focuses on IT support for KFC staff.",
-          "For menu details or promotions please use KFC customer channels or the restaurant POS."
+          "Menu and ordering are not supported here. This assistant focuses on IT support for D4B staff.",
+          "For menu details or promotions please use D4B customer channels or the restaurant POS."
         ],
         FR: [
-          "Le menu et les commandes ne sont pas pris en charge ici. Cet assistant se concentre sur le support IT pour le personnel KFC.",
-          "Pour les détails du menu ou les promotions, utilisez les canaux clients KFC ou le POS du restaurant."
+          "Le menu et les commandes ne sont pas pris en charge ici. Cet assistant se concentre sur le support IT pour le personnel D4B.",
+          "Pour les dÃ©tails du menu ou les promotions, utilisez les canaux clients D4B ou le POS du restaurant."
         ],
         AR: [
-          "القائمة والطلبات غير مدعومة هنا. هذا المساعد مخصص لدعم تكنولوجيا المعلومات لموظفي KFC.",
-          "لمعرفة تفاصيل القائمة أو العروض استخدم قنوات خدمة العملاء لدى KFC أو نظام نقاط البيع بالمطعم."
+          "Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© ÙˆØ§Ù„Ø·Ù„Ø¨Ø§Øª ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ…Ø© Ù‡Ù†Ø§. Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ù…Ø®ØµØµ Ù„Ø¯Ø¹Ù… ØªÙƒÙ†ÙˆÙ„ÙˆØ¬ÙŠØ§ Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ù„Ù…ÙˆØ¸ÙÙŠ D4B.",
+          "Ù„Ù…Ø¹Ø±ÙØ© ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© Ø£Ùˆ Ø§Ù„Ø¹Ø±ÙˆØ¶ Ø§Ø³ØªØ®Ø¯Ù… Ù‚Ù†ÙˆØ§Øª Ø®Ø¯Ù…Ø© Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡ Ù„Ø¯Ù‰ D4B Ø£Ùˆ Ù†Ø¸Ø§Ù… Ù†Ù‚Ø§Ø· Ø§Ù„Ø¨ÙŠØ¹ Ø¨Ø§Ù„Ù…Ø·Ø¹Ù…."
         ]
     },
     order: {
         EN: [
-          "Ordering is not handled by this assistant. Please use the KFC ordering channels or speak with restaurant staff for food orders.",
+          "Ordering is not handled by this assistant. Please use the D4B ordering channels or speak with restaurant staff for food orders.",
           "This assistant handles IT incidents. Describe the technical issue you're facing and I'll log a ticket."
         ],
         FR: [
-          "Les commandes ne sont pas gérées par cet assistant. Veuillez utiliser les canaux de commande KFC ou parler au personnel du restaurant pour passer une commande.",
-          "Cet assistant gère les incidents IT. Décrivez le problème technique rencontré et je créerai un ticket."
+          "Les commandes ne sont pas gÃ©rÃ©es par cet assistant. Veuillez utiliser les canaux de commande D4B ou parler au personnel du restaurant pour passer une commande.",
+          "Cet assistant gÃ¨re les incidents IT. DÃ©crivez le problÃ¨me technique rencontrÃ© et je crÃ©erai un ticket."
         ],
         AR: [
-          "الطلبات غير مُعالجة من قبل هذا المساعد. يرجى استخدام قنوات طلبات KFC أو التحدث إلى موظفي المطعم لتقديم الطلب.",
-          "هذا المساعد يتعامل مع حوادث تكنولوجيا المعلومات. صف المشكلة التقنية التي تواجهها وسأسجل تذكرة."
+          "Ø§Ù„Ø·Ù„Ø¨Ø§Øª ØºÙŠØ± Ù…ÙØ¹Ø§Ù„Ø¬Ø© Ù…Ù† Ù‚Ø¨Ù„ Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯. ÙŠØ±Ø¬Ù‰ Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‚Ù†ÙˆØ§Øª Ø·Ù„Ø¨Ø§Øª D4B Ø£Ùˆ Ø§Ù„ØªØ­Ø¯Ø« Ø¥Ù„Ù‰ Ù…ÙˆØ¸ÙÙŠ Ø§Ù„Ù…Ø·Ø¹Ù… Ù„ØªÙ‚Ø¯ÙŠÙ… Ø§Ù„Ø·Ù„Ø¨.",
+          "Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ ÙŠØªØ¹Ø§Ù…Ù„ Ù…Ø¹ Ø­ÙˆØ§Ø¯Ø« ØªÙƒÙ†ÙˆÙ„ÙˆØ¬ÙŠØ§ Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª. ØµÙ Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ø§Ù„ØªÙ‚Ù†ÙŠØ© Ø§Ù„ØªÙŠ ØªÙˆØ§Ø¬Ù‡Ù‡Ø§ ÙˆØ³Ø£Ø³Ø¬Ù„ ØªØ°ÙƒØ±Ø©."
         ]
     }
   };
   
-  const lang = context.lang || 'EN';
-  const langKey = lang === 'FR' ? 'FR' : lang === 'AR' ? 'AR' : 'EN';
-  const typeResponses = responses[type]?.[langKey] || responses[type]?.EN || [];
+  const lang = context.lang || 'FR';
+  const langKey = 'FR';
+  const typeResponses = responses[type]?.[langKey] || responses[type]?.FR || [];
   
   if (typeResponses.length === 0) return null;
   
@@ -1179,12 +1149,12 @@ function getVariedResponse(type, context = {}) {
   return typeResponses[Math.floor(Math.random() * typeResponses.length)];
 }
 
-function getKFCMenuText(lang = 'EN') {
-  return "Menu and ordering content removed. This assistant only provides IT support for KFC staff; please use customer ordering channels for menu and promotions.";
+function getD4BMenuText() {
+  return "Le menu et les commandes ne sont pas pris en charge ici. Cet assistant fournit uniquement un support IT pour D4B.";
 }
 
-function getKFCPromoText(lang = 'EN') {
-  return "Promotions and offers content removed. This assistant only provides IT support for KFC staff; please use customer ordering channels for menu and promotions.";
+function getD4BPromoText() {
+  return "Les promotions et les offres ne sont pas prises en charge ici. Cet assistant fournit uniquement un support IT pour D4B.";
 }
 
 function detectIntentAndFollowUp(message) {
@@ -1196,24 +1166,20 @@ function detectIntentAndFollowUp(message) {
   }
   
   // Explicit order with item detection
-  const order = parseKFCOrder(message);
+  const order = parseD4BOrder(message);
   if (order) {
     const lang = detectLanguage(message);
     const responses = {
       EN: `Got it. I have ${order.quantity} ${order.label} on your request. Your order will be sent to the restaurant staff for processing.`,
-      FR: `Très bien. J'ai noté ${order.quantity} ${order.label} dans votre demande. Votre commande sera envoyée au personnel du restaurant pour traitement.`,
-      AR: `حسناً. لقد سجلت ${order.quantity} ${order.label} في طلبك. سيتم إرسال طلبك إلى طاقم المطعم للمعالجة.`
+      FR: `TrÃ¨s bien. J'ai notÃ© ${order.quantity} ${order.label} dans votre demande. Votre commande sera envoyÃ©e au personnel du restaurant pour traitement.`,
+      AR: `Ø­Ø³Ù†Ø§Ù‹. Ù„Ù‚Ø¯ Ø³Ø¬Ù„Øª ${order.quantity} ${order.label} ÙÙŠ Ø·Ù„Ø¨Ùƒ. Ø³ÙŠØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø·Ù„Ø¨Ùƒ Ø¥Ù„Ù‰ Ø·Ø§Ù‚Ù… Ø§Ù„Ù…Ø·Ø¹Ù… Ù„Ù„Ù…Ø¹Ø§Ù„Ø¬Ø©.`
     };
     return responses[lang] || responses.EN;
   }
 
-  // Menu/order/promotions are not supported in the IT-support chatbot — respond with guidance
-  if (/\b(menu|voir le menu|see the menu|show me the menu|menu items|what's on the menu|what is on the menu|what do you have|promo|promos|promotion|promotions|order|commande|suivi|suivi de commande)\b/.test(lowerMessage)) {
-    return askByLang(
-      "This chatbot provides IT support for KFC staff. For menu, promotions, or ordering questions please use the KFC customer channels.",
-      "Ce chatbot fournit un support IT pour le personnel KFC. Pour les questions liées au menu, promotions ou commandes, veuillez utiliser les canaux clients KFC.",
-      "هذه الدردشة تقدم دعمًا فنيًا لموظفي KFC. لأسئلة القائمة أو العروض أو الطلبات، يرجى استخدام قنوات خدمة العملاء لدى KFC."
-    );
+  // Menu/order/promotions are not supported in the IT-support chatbot â€” respond with guidance
+  if (/\b(menu|voir le menu|show me the menu|menu items|what's on the menu|what is on the menu|what do you have|promo|promos|promotion|promotions|order|commande|suivi|suivi de commande)\b/.test(lowerMessage)) {
+    return "Ce chatbot fournit un support IT pour D4B. Pour les questions liÃ©es au menu, aux promotions ou aux commandes, veuillez utiliser les canaux clients appropriÃ©s.";
   }
   
   // Hunger intent
@@ -1235,13 +1201,13 @@ function handleMemoryBasedQuestions(message) {
   const lang = detectedLang === 'FR' ? 'FR' : detectedLang === 'AR' ? 'AR' : 'EN';
   
   // Table number questions
-  if (/\b(what.*room|my room|room number|chambre|غرفة|room\s+\d+|table number|my table|table\s+\d+)\b/.test(lowerMessage)) {
+  if (/\b(what.*room|my room|room number|chambre|ØºØ±ÙØ©|room\s+\d+|table number|my table|table\s+\d+)\b/.test(lowerMessage)) {
     const room = getFromMemory('room') || guest.room;
     if (room) {
       return askByLang(
         `Your table number is ${room}.`,
-        `Votre numéro de table est ${room}.`,
-        `رقم طاولتك هو ${room}.`
+        `Votre numÃ©ro de table est ${room}.`,
+        `Ø±Ù‚Ù… Ø·Ø§ÙˆÙ„ØªÙƒ Ù‡Ùˆ ${room}.`
       );
     } else {
       return getVariedResponse('missingInfo', { lang });
@@ -1249,13 +1215,13 @@ function handleMemoryBasedQuestions(message) {
   }
   
   // Name questions
-  if (/\b(what.*name|my name|who am i|mon nom|اسمي|name\s+[a-zA-Z]+)\b/.test(lowerMessage)) {
+  if (/\b(what.*name|my name|who am i|mon nom|Ø§Ø³Ù…ÙŠ|name\s+[a-zA-Z]+)\b/.test(lowerMessage)) {
     const name = getFromMemory('name') || guest.name;
     if (name) {
       return askByLang(
         `Your name is ${name}.`,
         `Votre nom est ${name}.`,
-        `اسمك هو ${name}.`
+        `Ø§Ø³Ù…Ùƒ Ù‡Ùˆ ${name}.`
       );
     } else {
       return getVariedResponse('missingInfo', { lang });
@@ -1263,38 +1229,38 @@ function handleMemoryBasedQuestions(message) {
   }
   
   // Request history questions
-  if (/\b(what.*asked|my requests|request history|past requests|demandes|طلباتي)\b/.test(lowerMessage)) {
+  if (/\b(what.*asked|my requests|request history|past requests|demandes|Ø·Ù„Ø¨Ø§ØªÙŠ)\b/.test(lowerMessage)) {
     const history = getRequestHistory();
     if (history.length > 0) {
       const recentRequests = history.slice(-3).map(req => req.request).join(', ');
       return askByLang(
         `Your recent requests include: ${recentRequests}.`,
-        `Vos demandes récentes incluent : ${recentRequests}.`,
-        `طلباتك الأخيرة تشمل: ${recentRequests}.`
+        `Vos demandes rÃ©centes incluent : ${recentRequests}.`,
+        `Ø·Ù„Ø¨Ø§ØªÙƒ Ø§Ù„Ø£Ø®ÙŠØ±Ø© ØªØ´Ù…Ù„: ${recentRequests}.`
       );
     } else {
       return askByLang(
         "You haven't made any requests yet.",
         "Vous n'avez pas encore fait de demandes.",
-        "لم تقم بأي طلبات بعد."
+        "Ù„Ù… ØªÙ‚Ù… Ø¨Ø£ÙŠ Ø·Ù„Ø¨Ø§Øª Ø¨Ø¹Ø¯."
       );
     }
   }
   
   // Last request questions
-  if (/\b(last request|previous request|dernière demande|آخر طلب)\b/.test(lowerMessage)) {
+  if (/\b(last request|previous request|derniÃ¨re demande|Ø¢Ø®Ø± Ø·Ù„Ø¨)\b/.test(lowerMessage)) {
     const lastRequest = getFromMemory('lastRequest');
     if (lastRequest) {
       return askByLang(
         `Your last request was: ${lastRequest}.`,
-        `Votre dernière demande était : ${lastRequest}.`,
-        `طلبك الأخير كان: ${lastRequest}.`
+        `Votre derniÃ¨re demande Ã©tait : ${lastRequest}.`,
+        `Ø·Ù„Ø¨Ùƒ Ø§Ù„Ø£Ø®ÙŠØ± ÙƒØ§Ù†: ${lastRequest}.`
       );
     } else {
       return askByLang(
         "You haven't made any requests yet.",
         "Vous n'avez pas encore fait de demandes.",
-        "لم تقم بأي طلبات بعد."
+        "Ù„Ù… ØªÙ‚Ù… Ø¨Ø£ÙŠ Ø·Ù„Ø¨Ø§Øª Ø¨Ø¹Ø¯."
       );
     }
   }
@@ -1327,7 +1293,7 @@ function saveGuestState() {
       infoRequestCount: guest.infoRequestCount,
       memory: guest.memory // Save the memory object
     };
-    localStorage.setItem("kfc_guest_session", JSON.stringify(stateToSave));
+    localStorage.setItem("D4B_guest_session", JSON.stringify(stateToSave));
     console.log(" Saved guest state:", stateToSave);
   } catch (error) {
     console.error(" Error saving guest state:", error);
@@ -1336,7 +1302,7 @@ function saveGuestState() {
 
 function loadGuestState() {
   try {
-    const savedState = localStorage.getItem("kfc_guest_session");
+    const savedState = localStorage.getItem("D4B_guest_session");
     if (savedState) {
       const parsed = JSON.parse(savedState);
       Object.assign(guest, parsed);
@@ -1412,13 +1378,13 @@ function resetGuestState() {
     }
   });
   
-  localStorage.removeItem("kfc_guest_session");
+  localStorage.removeItem("D4B_guest_session");
   console.log(" Guest state reset");
 }
 
 function initializeGuestState() {
   resetGuestState();
-  console.log(" KFC France Bot initialized with fresh guest state:", {
+  console.log(" D4B France Bot initialized with fresh guest state:", {
     name: guest.name,
     room: guest.room,
     confirmed: guest.guestInfoConfirmed,
@@ -1437,9 +1403,9 @@ function LogGuestRequest(logInput) {
     };
     
     // Save to localStorage
-    const existingLogs = JSON.parse(localStorage.getItem("kfc_logs") || "[]");
+    const existingLogs = JSON.parse(localStorage.getItem("D4B_logs") || "[]");
     existingLogs.push(logEntry);
-    localStorage.setItem("kfc_logs", JSON.stringify(existingLogs));
+    localStorage.setItem("D4B_logs", JSON.stringify(existingLogs));
     
     console.log(" LogGuestRequest successful:", logEntry);
     return { success: true, message: "Request logged successfully" };
@@ -1461,7 +1427,7 @@ function ensureRequestLogging(originalMessage, requestType, urgency = "normal") 
       message: askByLang(
         "Could you please provide your name and restaurant code?",
         "Pouvez-vous fournir votre nom et le code restaurant ?",
-        "هل يمكنك تقديم اسمك ورمز المطعم؟"
+        "Ù‡Ù„ ÙŠÙ…ÙƒÙ†Ùƒ ØªÙ‚Ø¯ÙŠÙ… Ø§Ø³Ù…Ùƒ ÙˆØ±Ù…Ø² Ø§Ù„Ù…Ø·Ø¹Ù…ØŸ"
       )
     };
   }
@@ -1485,8 +1451,8 @@ function ensureRequestLogging(originalMessage, requestType, urgency = "normal") 
       success: true, 
       message: askByLang(
         ` Your urgent request for '${details}' has been logged and will be delivered to table ${guest.room} immediately.`,
-        ` Votre demande urgente pour '${details}' a été enregistrée et sera livrée à votre table ${guest.room} immédiatement.`,
-        ` تم تسجيل طلبك العاجل لـ '${details}' وسيتم تسليمه إلى طاولتك ${guest.room} فوراً.`
+        ` Votre demande urgente pour '${details}' a Ã©tÃ© enregistrÃ©e et sera livrÃ©e Ã  votre table ${guest.room} immÃ©diatement.`,
+        ` ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø·Ù„Ø¨Ùƒ Ø§Ù„Ø¹Ø§Ø¬Ù„ Ù„Ù€ '${details}' ÙˆØ³ÙŠØªÙ… ØªØ³Ù„ÙŠÙ…Ù‡ Ø¥Ù„Ù‰ Ø·Ø§ÙˆÙ„ØªÙƒ ${guest.room} ÙÙˆØ±Ø§Ù‹.`
       )
     };
   } else {
@@ -1494,8 +1460,8 @@ function ensureRequestLogging(originalMessage, requestType, urgency = "normal") 
       success: true, 
       message: askByLang(
         ` Your request for '${details}' has been logged and will be delivered to table ${guest.room}.`,
-        ` Votre demande pour '${details}' a été enregistrée et sera livrée à votre table ${guest.room}.`,
-        ` تم تسجيل طلبك لـ '${details}' وسيتم تسليمه إلى طاولتك ${guest.room}.`
+        ` Votre demande pour '${details}' a Ã©tÃ© enregistrÃ©e et sera livrÃ©e Ã  votre table ${guest.room}.`,
+        ` ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø·Ù„Ø¨Ùƒ Ù„Ù€ '${details}' ÙˆØ³ÙŠØªÙ… ØªØ³Ù„ÙŠÙ…Ù‡ Ø¥Ù„Ù‰ Ø·Ø§ÙˆÙ„ØªÙƒ ${guest.room}.`
       )
     };
   }
@@ -1530,21 +1496,21 @@ async function processSingleIntent(text) {
         });
         return r || askByLang(
           "Your IT support request has been logged and will be processed by the correct team.",
-          "Votre demande de support IT a été enregistrée et sera traitée par l'équipe appropriée.",
-          "تم تسجيل طلب دعم تقنية المعلومات الخاص بك وسيتم معالجته من قبل الفريق المناسب."
+          "Votre demande de support IT a Ã©tÃ© enregistrÃ©e et sera traitÃ©e par l'Ã©quipe appropriÃ©e.",
+          "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø·Ù„Ø¨ Ø¯Ø¹Ù… ØªÙ‚Ù†ÙŠØ© Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø®Ø§Øµ Ø¨Ùƒ ÙˆØ³ÙŠØªÙ… Ù…Ø¹Ø§Ù„Ø¬ØªÙ‡ Ù…Ù† Ù‚Ø¨Ù„ Ø§Ù„ÙØ±ÙŠÙ‚ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨."
         );
       }
       // Otherwise just acknowledge and keep it light
       return askByLang(
         `Thanks ${guest.name}. Noted `,
-        `Merci ${guest.name}. C'est noté `,
-        `شكراً ${guest.name}. تم التحديث `
+        `Merci ${guest.name}. C'est notÃ© `,
+        `Ø´ÙƒØ±Ø§Ù‹ ${guest.name}. ØªÙ… Ø§Ù„ØªØ­Ø¯ÙŠØ« `
       );
     }
   }
 
   const isService = isServiceRequest(text);
-  console.log("🔧 Is service request:", isService);
+  console.log("ðŸ”§ Is service request:", isService);
 
   if (isService) {
     const faqAnswer = await findFAQAnswer(text);
@@ -1571,30 +1537,30 @@ async function processSingleIntent(text) {
       });
       return r || askByLang(
         "Your IT support request has been logged and will be processed by the correct team.",
-        "Votre demande de support IT a été enregistrée et sera traitée par l'équipe appropriée.",
-        "تم تسجيل طلب دعم تقنية المعلومات الخاص بك وسيتم معالجته من قبل الفريق المناسب."
+        "Votre demande de support IT a Ã©tÃ© enregistrÃ©e et sera traitÃ©e par l'Ã©quipe appropriÃ©e.",
+        "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø·Ù„Ø¨ Ø¯Ø¹Ù… ØªÙ‚Ù†ÙŠØ© Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø®Ø§Øµ Ø¨Ùƒ ÙˆØ³ÙŠØªÙ… Ù…Ø¹Ø§Ù„Ø¬ØªÙ‡ Ù…Ù† Ù‚Ø¨Ù„ Ø§Ù„ÙØ±ÙŠÙ‚ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨."
       );
     }
-    // No identity yet → save pending request and ask once for both fields
+    // No identity yet â†’ save pending request and ask once for both fields
     guest.pendingRequest = { original: text, category, details, priority, serviceLot, slaDeadline };
     return askByLang(
       "Of course. May I have your name and restaurant code to open the ticket?",
-      "Bien sûr. Puis-je avoir votre nom et le code restaurant pour ouvrir le ticket ?",
-      "بكل سرور. هل يمكنني الحصول على اسمك ورمز المطعم لفتح التذكرة؟"
+      "Bien sÃ»r. Puis-je avoir votre nom et le code restaurant pour ouvrir le ticket ?",
+      "Ø¨ÙƒÙ„ Ø³Ø±ÙˆØ±. Ù‡Ù„ ÙŠÙ…ÙƒÙ†Ù†ÙŠ Ø§Ù„Ø­ØµÙˆÙ„ Ø¹Ù„Ù‰ Ø§Ø³Ù…Ùƒ ÙˆØ±Ù…Ø² Ø§Ù„Ù…Ø·Ø¹Ù… Ù„ÙØªØ­ Ø§Ù„ØªØ°ÙƒØ±Ø©ØŸ"
     );
   }
 
   // Not a service request, do not answer unrelated questions.
   return askByLang(
     "I only handle restaurant IT support issues. Please describe your incident or problem so I can help.",
-    "Je ne traite que les problèmes de support IT en restaurant. Veuillez décrire votre incident ou problème afin que je puisse vous aider.",
-    "أنا أتعامل فقط مع مشكلات دعم تقنية المعلومات للمطعم. يرجى وصف الحادث أو المشكلة حتى أتمكن من مساعدتك."
+    "Je ne traite que les problÃ¨mes de support IT en restaurant. Veuillez dÃ©crire votre incident ou problÃ¨me afin que je puisse vous aider.",
+    "Ø£Ù†Ø§ Ø£ØªØ¹Ø§Ù…Ù„ ÙÙ‚Ø· Ù…Ø¹ Ù…Ø´ÙƒÙ„Ø§Øª Ø¯Ø¹Ù… ØªÙ‚Ù†ÙŠØ© Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ù„Ù„Ù…Ø·Ø¹Ù…. ÙŠØ±Ø¬Ù‰ ÙˆØµÙ Ø§Ù„Ø­Ø§Ø¯Ø« Ø£Ùˆ Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ø­ØªÙ‰ Ø£ØªÙ…ÙƒÙ† Ù…Ù† Ù…Ø³Ø§Ø¹Ø¯ØªÙƒ."
   );
 }
 
 // --- SIMPLIFIED GPT RESPONSE FOR TESTING ---
 async function getGPTResponse(userMessage, systemPrompt) {
-  return getGPTResponse_Direct(window.__KFC_HISTORY__); // reuse your direct-call helper
+  return getGPTResponse_Direct(window.__D4B_HISTORY__); // reuse your direct-call helper
 }
 
 async function handleUserInput(text) {
@@ -1625,7 +1591,7 @@ function testLogging() {
 }
 
 function testCompleteLogging() {
-  console.log("🧪 Testing complete logging flow...");
+  console.log("ðŸ§ª Testing complete logging flow...");
   guest.name = "Test User";
   guest.room = "123";
   const result = ensureRequestLogging("I need a towel", "towel", "normal");
@@ -1633,20 +1599,20 @@ function testCompleteLogging() {
 }
 
 function clearAllLogs() {
-  localStorage.removeItem("kfc_logs");
-  console.log("🗑️ All logs cleared");
+  localStorage.removeItem("D4B_logs");
+  console.log("ðŸ—‘ï¸ All logs cleared");
 }
 
 function forceClearAllLogs() {
-  localStorage.removeItem("kfc_logs");
-  localStorage.removeItem("kfc_guest_session");
+  localStorage.removeItem("D4B_logs");
+  localStorage.removeItem("D4B_guest_session");
   resetGuestState();
   console.log(" Force cleared all logs and state");
 }
 
 // ====== LOOP KILLERS (TEST MODE) ======
-window.__KFC_TEST_LOCK__ = window.__KFC_TEST_LOCK__ || { isProcessing:false };
-window.__KFC_HISTORY__ = window.__KFC_HISTORY__ || [
+window.__D4B_TEST_LOCK__ = window.__D4B_TEST_LOCK__ || { isProcessing:false };
+window.__D4B_HISTORY__ = window.__D4B_HISTORY__ || [
   { role: "system", content: (window.SYSTEM_PROMPT || `
 You are Digital4Business IT support assistant. Respond in English or French based on the user's language. You support Digital4Business teams, France, Tunisia and Maurice with IT incident classification, ticket routing, service lot assignment, and SLA expectations.
 
@@ -1666,8 +1632,8 @@ IMPORTANT: Keep responses concise. If unsure, indicate that the request is being
 
 // 1) Deduplicate input binding (prevents double send on submit+keydown)
 (function bindOnce(){
-  if (window.__kfcInputBound) return;
-  window.__kfcInputBound = true;
+  if (window.__D4BInputBound) return;
+  window.__D4BInputBound = true;
   const form = document.getElementById("chat-form");
   const input = document.getElementById("user-input");
   if (form) {
@@ -1699,11 +1665,11 @@ function displayResponse_STRICT(text) {
 // 3) Force pure Q&A route every turn. No classifiers, no menus, no logs.
 async function handleUserMessage_QAOnly(userMessage) {
   // In your send handler (handleUserMessage_QAOnly), add at the top:
-  if (!window.__KFC_APPROVED__) {
-    return " Please wait — your profile is pending approval.";
+  if (!window.__D4B_APPROVED__) {
+    return " Please wait â€” your profile is pending approval.";
   }
 
-  const lock = window.__KFC_TEST_LOCK__;
+  const lock = window.__D4B_TEST_LOCK__;
   if (lock.isProcessing) {
     console.log(" Request blocked - already processing");
     return;
@@ -1741,30 +1707,30 @@ async function handleUserMessage_QAOnly(userMessage) {
     if (activeCategory) {
       const lower = (msg || '').toLowerCase();
       const normLower = lower.normalize ? lower.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : lower;
-      const explicitFixed = /(fixed|resolved|resolu|regle|reglé|ca marche|c'est resolu|cest resolu|fonctionne|a fonctionne|a marche|a marche|a marche)/i;
+      const explicitFixed = /(fixed|resolved|resolu|regle|reglÃ©|ca marche|c'est resolu|cest resolu|fonctionne|a fonctionne|a marche|a marche|a marche)/i;
       const genericYes = /(yes|y|oui|si|ok|d'accord|bien)/i;
       const no = /(no|n|non|not yet|pas encore|nope)/i;
       const awaiting = !!(tsMemory[activeCategory] && tsMemory[activeCategory].awaitingConfirmation);
-      const lastAssistant = [...(window.__KFC_HISTORY__ || [])].reverse().find(m => m.role === 'assistant');
+      const lastAssistant = [...(window.__D4B_HISTORY__ || [])].reverse().find(m => m.role === 'assistant');
       const lastText = lastAssistant?.content || '';
       const lastTextNorm = lastText.normalize ? lastText.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'') : lastText;
       const confirmationAsked = awaiting || /veuillez me dire si le probleme est resolu|did that fix the issue|did that fix the problem|reply with 'yes, fixed' or 'no'|repondez par 'oui, resolu' ou 'non'/i.test(lastTextNorm.toLowerCase());
-      const ticketConfirmationAsked = /le probleme persiste|le problème persiste|does the issue still persist|does it still persist|still persist|open a ticket|ouvrir un ticket/i.test(lastTextNorm.toLowerCase());
+      const ticketConfirmationAsked = /le probleme persiste|le problÃ¨me persiste|does the issue still persist|does it still persist|still persist|open a ticket|ouvrir un ticket/i.test(lastTextNorm.toLowerCase());
 
       if (explicitFixed.test(normLower)) {
         // User explicitly confirms the issue is fixed
         delete guest.intentMemory.troubleshoot[activeCategory];
         saveGuestState();
         return askByLang(
-          "Thanks — glad it's fixed. I closed the troubleshooting flow.",
-          "Merci — ravi que ce soit résolu. J'ai fermé le flux de dépannage.",
-          "تم الحل، شكرًا."
+          "Thanks â€” glad it's fixed. I closed the troubleshooting flow.",
+          "Merci â€” ravi que ce soit rÃ©solu. J'ai fermÃ© le flux de dÃ©pannage.",
+          "ØªÙ… Ø§Ù„Ø­Ù„ØŒ Ø´ÙƒØ±Ù‹Ø§."
         );
       }
 
       if (genericYes.test(normLower)) {
         if (ticketConfirmationAsked) {
-          const sessionData = JSON.parse(localStorage.getItem('KFC_CURRENT_SESSION') || '{}');
+          const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
           const state = tsMemory[activeCategory] || {};
           const priority = state.priority || 'P3';
           const serviceLot = state.serviceLot || activeCategory;
@@ -1799,9 +1765,9 @@ async function handleUserMessage_QAOnly(userMessage) {
           delete guest.intentMemory.troubleshoot[activeCategory];
           saveGuestState();
           return askByLang(
-            "Thanks — glad it's fixed. I closed the troubleshooting flow.",
-            "Merci — ravi que ce soit résolu. J'ai fermé le flux de dépannage.",
-            "تم الحل، شكرًا."
+            "Thanks â€” glad it's fixed. I closed the troubleshooting flow.",
+            "Merci â€” ravi que ce soit rÃ©solu. J'ai fermÃ© le flux de dÃ©pannage.",
+            "ØªÙ… Ø§Ù„Ø­Ù„ØŒ Ø´ÙƒØ±Ù‹Ø§."
           );
         }
 
@@ -1818,20 +1784,20 @@ async function handleUserMessage_QAOnly(userMessage) {
         }
         return askByLang(
           "Please tell me whether the problem is fixed or if you still need help. Reply with 'yes, fixed' or 'no'.",
-          "Veuillez me dire si le problème est résolu ou si vous avez encore besoin d'aide. Répondez par 'oui, résolu' ou 'non'.",
-          "الرجاء إخباري ما إذا كانت المشكلة قد تم حلها أم أنك ما زلت بحاجة إلى المساعدة. أجب بنعم، تم الحل أو لا."
+          "Veuillez me dire si le problÃ¨me est rÃ©solu ou si vous avez encore besoin d'aide. RÃ©pondez par 'oui, rÃ©solu' ou 'non'.",
+          "Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø¥Ø®Ø¨Ø§Ø±ÙŠ Ù…Ø§ Ø¥Ø°Ø§ ÙƒØ§Ù†Øª Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ù‚Ø¯ ØªÙ… Ø­Ù„Ù‡Ø§ Ø£Ù… Ø£Ù†Ùƒ Ù…Ø§ Ø²Ù„Øª Ø¨Ø­Ø§Ø¬Ø© Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯Ø©. Ø£Ø¬Ø¨ Ø¨Ù†Ø¹Ù…ØŒ ØªÙ… Ø§Ù„Ø­Ù„ Ø£Ùˆ Ù„Ø§."
         );
       }
 
       if (no.test(normLower)) {
-        const ticketConfirmationAsked = /le probleme persiste|le problème persiste|does the issue still persist|does it still persist|still persist|open a ticket|ouvrir un ticket/i.test(lastTextNorm.toLowerCase());
+        const ticketConfirmationAsked = /le probleme persiste|le problÃ¨me persiste|does the issue still persist|does it still persist|still persist|open a ticket|ouvrir un ticket/i.test(lastTextNorm.toLowerCase());
         if (ticketConfirmationAsked) {
           delete guest.intentMemory.troubleshoot[activeCategory];
           saveGuestState();
           return askByLang(
             "Thank you. I will assume the issue is resolved and close the diagnostics flow.",
-            "Merci. Je considère le problème comme résolu et je clôture le flux de diagnostic.",
-            "شكراً. سأعتبر المشكلة محلولة وأغلق تدفق التشخيص."
+            "Merci. Je considÃ¨re le problÃ¨me comme rÃ©solu et je clÃ´ture le flux de diagnostic.",
+            "Ø´ÙƒØ±Ø§Ù‹. Ø³Ø£Ø¹ØªØ¨Ø± Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ù…Ø­Ù„ÙˆÙ„Ø© ÙˆØ£ØºÙ„Ù‚ ØªØ¯ÙÙ‚ Ø§Ù„ØªØ´Ø®ÙŠØµ."
           );
         }
 
@@ -1855,13 +1821,13 @@ async function handleUserMessage_QAOnly(userMessage) {
           }
           return askByLang(
             "I have finished the troubleshooting steps. Does the issue still persist? Reply yes to open a ticket or no if it is resolved.",
-            "J'ai terminé les étapes de dépannage. Le problème persiste-t-il toujours ? Répondez oui pour ouvrir un ticket ou non si le problème est résolu.",
-            "لقد أكملت خطوات استكشاف الأخطاء. هل لا تزال المشكلة قائمة؟ أجب بنعم لفتح تذكرة أو لا إذا تم حل المشكلة."
+            "J'ai terminÃ© les Ã©tapes de dÃ©pannage. Le problÃ¨me persiste-t-il toujours ? RÃ©pondez oui pour ouvrir un ticket ou non si le problÃ¨me est rÃ©solu.",
+            "Ù„Ù‚Ø¯ Ø£ÙƒÙ…Ù„Øª Ø®Ø·ÙˆØ§Øª Ø§Ø³ØªÙƒØ´Ø§Ù Ø§Ù„Ø£Ø®Ø·Ø§Ø¡. Ù‡Ù„ Ù„Ø§ ØªØ²Ø§Ù„ Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ù‚Ø§Ø¦Ù…Ø©ØŸ Ø£Ø¬Ø¨ Ø¨Ù†Ø¹Ù… Ù„ÙØªØ­ ØªØ°ÙƒØ±Ø© Ø£Ùˆ Ù„Ø§ Ø¥Ø°Ø§ ØªÙ… Ø­Ù„ Ø§Ù„Ù…Ø´ÙƒÙ„Ø©."
           );
         }
 
         // If final confirmation was already requested, proceed to ticket creation
-        const sessionData = JSON.parse(localStorage.getItem('KFC_CURRENT_SESSION') || '{}');
+        const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
         const priority = state.priority || 'P3';
         const serviceLot = state.serviceLot || activeCategory;
         const slaDeadline = state.slaDeadline || calculateSlaDeadline(priority);
@@ -1896,8 +1862,8 @@ async function handleUserMessage_QAOnly(userMessage) {
       if (confirmationAsked) {
         return askByLang(
           "Did that fix the issue? Please answer yes or no.",
-          "Cela a-t-il résolu le problème ? Veuillez répondre par oui ou non.",
-          "هل تم حل المشكلة؟ الرجاء الإجابة بنعم أو لا."
+          "Cela a-t-il rÃ©solu le problÃ¨me ? Veuillez rÃ©pondre par oui ou non.",
+          "Ù‡Ù„ ØªÙ… Ø­Ù„ Ø§Ù„Ù…Ø´ÙƒÙ„Ø©ØŸ Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø§Ù„Ø¥Ø¬Ø§Ø¨Ø© Ø¨Ù†Ø¹Ù… Ø£Ùˆ Ù„Ø§."
         );
       }
 
@@ -1908,7 +1874,7 @@ async function handleUserMessage_QAOnly(userMessage) {
     const serviceRequest = isServicey(msg);
 
     // Log request if it looks like one (non-blocking) - NOW WITH FALLBACK GUEST INFO
-    if (window.__KFC_APPROVED__ && window.SERVICE_LOGGING && serviceRequest) {
+    if (window.__D4B_APPROVED__ && window.SERVICE_LOGGING && serviceRequest) {
       // Debounce duplicates
       const now = Date.now();
       if (window.__lastReqText === msg && (now - (window.__lastReqAt || 0) < 7000)) {
@@ -1919,9 +1885,9 @@ async function handleUserMessage_QAOnly(userMessage) {
       window.__lastReqAt = now;
       
       // Get session context from localStorage
-      const sessionData = JSON.parse(localStorage.getItem('KFC_CURRENT_SESSION') || '{}');
+      const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
       const { category, details, priority, serviceLot, slaDeadline } = summarizeRequest(msg);
-      const order = parseKFCOrder(msg);
+      const order = parseD4BOrder(msg);
       const requestText = order ? order.message : (details || msg);
       
       // Add to memory and request history
@@ -1979,9 +1945,9 @@ async function handleUserMessage_QAOnly(userMessage) {
             guest.intentMemory.troubleshoot[ts.category] = state;
             saveGuestState();
             return askByLang(
-              "J'ai terminé les étapes de dépannage. Le problème persiste-t-il toujours ? Répondez par oui pour ouvrir un ticket ou par non si le problème est résolu.",
-              "J'ai terminé les étapes de dépannage. Le problème persiste-t-il toujours ? Répondez par oui pour ouvrir un ticket ou par non si le problème est résolu.",
-              "لقد أكملت خطوات استكشاف الأخطاء. هل لا تزال المشكلة قائمة؟ أجب بنعم لفتح تذكرة أو لا إذا تم حل المشكلة."
+              "J'ai terminÃ© les Ã©tapes de dÃ©pannage. Le problÃ¨me persiste-t-il toujours ? RÃ©pondez par oui pour ouvrir un ticket ou par non si le problÃ¨me est rÃ©solu.",
+              "J'ai terminÃ© les Ã©tapes de dÃ©pannage. Le problÃ¨me persiste-t-il toujours ? RÃ©pondez par oui pour ouvrir un ticket ou par non si le problÃ¨me est rÃ©solu.",
+              "Ù„Ù‚Ø¯ Ø£ÙƒÙ…Ù„Øª Ø®Ø·ÙˆØ§Øª Ø§Ø³ØªÙƒØ´Ø§Ù Ø§Ù„Ø£Ø®Ø·Ø§Ø¡. Ù‡Ù„ Ù„Ø§ ØªØ²Ø§Ù„ Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ù‚Ø§Ø¦Ù…Ø©ØŸ Ø£Ø¬Ø¨ Ø¨Ù†Ø¹Ù… Ù„ÙØªØ­ ØªØ°ÙƒØ±Ø© Ø£Ùˆ Ù„Ø§ Ø¥Ø°Ø§ ØªÙ… Ø­Ù„ Ø§Ù„Ù…Ø´ÙƒÙ„Ø©."
             );
           }
         }
@@ -2012,17 +1978,17 @@ async function handleUserMessage_QAOnly(userMessage) {
     }
 
     // Append user message
-    window.__KFC_HISTORY__.push({ role: "user", content: msg });
-    console.log(" History length:", window.__KFC_HISTORY__.length);
+    window.__D4B_HISTORY__.push({ role: "user", content: msg });
+    console.log(" History length:", window.__D4B_HISTORY__.length);
 
     // Call GPT (your existing function or the inline one below)
-    const reply = await getGPTResponse_Direct(window.__KFC_HISTORY__);
+    const reply = await getGPTResponse_Direct(window.__D4B_HISTORY__);
     console.log(" Mistral Response:", reply);
 
     let out = (reply || "").trim() || askByLang(
-      "I can help with IT support for KFC. Please describe the technical issue you're facing.",
-      "Je peux vous aider avec le support IT KFC. Décrivez le problème technique que vous rencontrez.",
-      "أنا هنا لدعم تكنولوجيا المعلومات في KFC. صف المشكلة التقنية التي تواجهها."
+      "I can help with IT support for D4B. Please describe the technical issue you're facing.",
+      "Je peux vous aider avec le support IT D4B. DÃ©crivez le problÃ¨me technique que vous rencontrez.",
+      "Ø£Ù†Ø§ Ù‡Ù†Ø§ Ù„Ø¯Ø¹Ù… ØªÙƒÙ†ÙˆÙ„ÙˆØ¬ÙŠØ§ Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª ÙÙŠ D4B. ØµÙ Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ø§Ù„ØªÙ‚Ù†ÙŠØ© Ø§Ù„ØªÙŠ ØªÙˆØ§Ø¬Ù‡Ù‡Ø§."
     );
     
     // If this was a service request and the response seems generic, replace with confirmation
@@ -2038,7 +2004,7 @@ async function handleUserMessage_QAOnly(userMessage) {
     }
     
     // Belt & suspenders: ensure medical/critical incidents get a P1 confirmation
-    const isMedical = /\b(doctor|medecin|médecin|clinic|pharmacy|first aid|urgent|emergency)\b/.test(norm(msg));
+    const isMedical = /\b(doctor|medecin|mÃ©decin|clinic|pharmacy|first aid|urgent|emergency)\b/.test(norm(msg));
     if (isMedical && !confirmationMessage) {
       const detectedLang = detectLanguage(msg);
       out = getConfirmationMessage(msg, { priority: 'P1', serviceLot: 'Lot 1 - Helpdesk / Service Desk', slaDeadline: calculateSlaDeadline('P1') });
@@ -2050,14 +2016,14 @@ async function handleUserMessage_QAOnly(userMessage) {
     }
     
     // Save assistant message for context
-    window.__KFC_HISTORY__.push({ role: "assistant", content: out });
+    window.__D4B_HISTORY__.push({ role: "assistant", content: out });
 
     console.log(" QA Mode - Returning:", out);
     return out; // Return the response instead of calling displayResponse directly
 
   } catch (err) {
     console.error("GPT error:", err);
-    return "Petit souci réseau… réessayez dans un instant.";
+    return "Petit souci rÃ©seauâ€¦ rÃ©essayez dans un instant.";
   } finally {
     lock.isProcessing = false;
   }
@@ -2067,7 +2033,7 @@ async function handleUserMessage_QAOnly(userMessage) {
 async function getGPTResponse_Direct(history){
   try {
     // Get guest info for conversation logging
-    const sessionData = JSON.parse(localStorage.getItem('KFC_CURRENT_SESSION') || '{}');
+    const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
     const guestInfo = getBestGuestInfo();
     // Build messages and ensure system prompt matches guest language preference
     const messages = Array.isArray(history) ? history.slice() : [];
@@ -2107,12 +2073,12 @@ async function getGPTResponse_Direct(history){
     const data = await res.json();
     if (!res.ok) {
       console.error('Proxy error:', data);
-      return "Désolé, petit souci serveur. Réessayez.";
+      return "DÃ©solÃ©, petit souci serveur. RÃ©essayez.";
     }
     return data?.choices?.[0]?.message?.content ?? "Je n'ai pas compris, reformulez svp.";
   } catch (e) {
     console.error('Fetch /api/chat failed:', e);
-    return "Problème réseau. Retentez dans un instant.";
+    return "ProblÃ¨me rÃ©seau. Retentez dans un instant.";
   }
 }
 
@@ -2163,13 +2129,13 @@ window.testQAFlow = async function() {
   console.log(" Testing QA flow...");
   
   // Reset conversation but keep system prompt
-  window.__KFC_HISTORY__ = [window.__KFC_HISTORY__[0]];
+  window.__D4B_HISTORY__ = [window.__D4B_HISTORY__[0]];
   
   // Test three messages
   const test1 = await handleUserMessage_QAOnly("can I order a bucket meal?");
   console.log("Test 1 (order):", test1);
   
-  const test2 = await handleUserMessage_QAOnly("et les promos KFC?");
+  const test2 = await handleUserMessage_QAOnly("et les promos D4B?");
   console.log("Test 2 (promotions):", test2);
   
   const test3 = await handleUserMessage_QAOnly("do you offer delivery?");
@@ -2181,8 +2147,8 @@ window.testQAFlow = async function() {
 // 8) Startup verification
 (function verifyLoopKiller() {
   console.log(" Loop Killer Status Check:");
-  console.log("  - __KFC_TEST_LOCK__:", !!window.__KFC_TEST_LOCK__);
-  console.log("  - __KFC_HISTORY__:", !!window.__KFC_HISTORY__);
+  console.log("  - __D4B_TEST_LOCK__:", !!window.__D4B_TEST_LOCK__);
+  console.log("  - __D4B_HISTORY__:", !!window.__D4B_HISTORY__);
   console.log("  - handleUserMessage_QAOnly:", typeof window.handleUserMessage_QAOnly);
   console.log("  - getGPTResponse_Direct:", typeof window.getGPTResponse_Direct);
   console.log("  - SYSTEM_PROMPT:", !!window.SYSTEM_PROMPT);
@@ -2190,6 +2156,7 @@ window.testQAFlow = async function() {
   console.log(" TESTING MODE: All messages will go through QA system only");
   console.log(" Old system functions are completely disabled");
 })();
+
 
 
 
