@@ -1128,7 +1128,7 @@ const server = http.createServer(async (req, res) => {
   // Handle static files
   if (pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('This server is running backend API services only. Use /api/* endpoints.');
+    res.end('This server is running backend API services only');
     return;
   }
 
