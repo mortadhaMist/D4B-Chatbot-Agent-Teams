@@ -1126,10 +1126,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Handle static files
-  let filePath;
   if (pathname === '/') {
-    filePath = path.join(PUBLIC_DIR, '/chat.html');
-  } else if (!pathname.includes('.') && pathname.startsWith('/')) {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('This server is running backend API services only. Use /api/* endpoints.');
+    return;
+  }
+
+  let filePath;
+  if (!pathname.includes('.') && pathname.startsWith('/')) {
     filePath = path.join(PUBLIC_DIR, pathname + '.html');
   } else {
     filePath = path.join(PUBLIC_DIR, pathname);
