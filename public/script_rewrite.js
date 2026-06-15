@@ -922,8 +922,20 @@ function summarizeRequest(msg) {
   return { category, details, priority, serviceLot, slaDeadline };
 }
 
+function getCurrentTroubleshootState() {
+  const tsMemory = guest.intentMemory && guest.intentMemory.troubleshoot ? guest.intentMemory.troubleshoot : {};
+  const keys = Object.keys(tsMemory);
+  if (!keys.length) return null;
+
+  const ordered = keys
+    .map(category => ({ category, state: tsMemory[category] }))
+    .sort((a, b) => (b.state.step || 0) - (a.state.step || 0));
+
+  return ordered[0];
+}
+
 function isTicketCreationIntent(msg) {
-  return /\b(open a ticket|ouvrir un ticket|create ticket|cr[eé]er un ticket|ticket now|ticket please|ticket urgent|ticket urgente)\b/i.test(msg);
+  return /\b(open a ticket|create ticket|ticket now|ticket please|ticket urgent|ticket urgente|ouvrir(?: le| un)? ticket|ouvre(?:r|) ticket|cr[eé]e(?:r|) (?:le|un)? ticket|cr[eé]er(?: un| le)? ticket|faire un ticket|ouvrir un dossier|rien n'a fonctionn[eé]|rien ne fonctionne|toujours pas|pas r[eé]solu|ça ne fonctionne pas|ca ne fonctionne pas|aucune solution|toujours en panne)\b/i.test(msg);
 }
 
 // --- FAQ HANDLING ---
@@ -1723,6 +1735,7 @@ async function handleUserMessage_QAOnly(userMessage) {
       const stepsArray = Array.isArray(flowObj) ? flowObj : (flowObj.EN || flowObj); // Handle both formats
       return s && typeof s.step === 'number' && s.step > 0 && s.step <= stepsArray.length;
     });
+    const ticketIntent = isTicketCreationIntent(msg);
 
     if (activeCategory) {
       const lower = (msg || '').toLowerCase();
@@ -1730,13 +1743,28 @@ async function handleUserMessage_QAOnly(userMessage) {
       const explicitFixed = /(fixed|resolved|resolu|regle|reglÃ©|ca marche|c'est resolu|cest resolu|fonctionne|a fonctionne|a marche|a marche|a marche)/i;
       const genericYes = /(yes|y|oui|si|ok|d'accord|bien)/i;
       const no = /(no|n|non|not yet|pas encore|nope)/i;
-      const ticketIntent = isTicketCreationIntent(msg);
+      const unresolvedResponse = /\b(rien n'a fonctionn[eé]|rien ne fonctionne|toujours pas|pas r[eé]solu|ca ne fonctionne pas|ça ne fonctionne pas|toujours en panne|aucune solution)\b/i;
       const awaiting = !!(tsMemory[activeCategory] && tsMemory[activeCategory].awaitingConfirmation);
       const lastAssistant = [...(window.__D4B_HISTORY__ || [])].reverse().find(m => m.role === 'assistant');
       const lastText = lastAssistant?.content || '';
       const lastTextNorm = lastText.normalize ? lastText.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'') : lastText;
       const confirmationAsked = awaiting || /veuillez me dire si le probleme est resolu|did that fix the issue|did that fix the problem|reply with 'yes, fixed' or 'no'|repondez par 'oui, resolu' ou 'non'/i.test(lastTextNorm.toLowerCase());
       const ticketConfirmationAsked = /le probleme persiste|le problÃ¨me persiste|does the issue still persist|does it still persist|still persist|open a ticket|ouvrir un ticket/i.test(lastTextNorm.toLowerCase());
+      const shouldCreateTicket = ticketIntent || unresolvedResponse.test(normLower) || (genericYes.test(normLower) && ticketConfirmationAsked);
+
+      if (!genericYes.test(normLower) && !no.test(normLower) && !explicitFixed.test(normLower) && !ticketIntent && !unresolvedResponse.test(normLower) && msg.length > 5) {
+        try {
+          const state = tsMemory[activeCategory] || {};
+          const newDetails = state.details ? `${state.details}; ${msg}` : msg;
+          if (newDetails !== state.details) {
+            state.details = newDetails;
+            guest.intentMemory.troubleshoot[activeCategory] = state;
+            saveGuestState();
+          }
+        } catch (e) {
+          console.warn('Could not append troubleshoot details:', e);
+        }
+      }
 
       if (explicitFixed.test(normLower)) {
         // User explicitly confirms the issue is fixed
@@ -1749,66 +1777,64 @@ async function handleUserMessage_QAOnly(userMessage) {
         );
       }
 
-      if ((genericYes.test(normLower) && ticketConfirmationAsked) || ticketIntent) {
-        if (ticketIntent || ticketConfirmationAsked) {
-          const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
-          const state = tsMemory[activeCategory] || {};
-          const priority = state.priority || 'P3';
-          const serviceLot = state.serviceLot || activeCategory;
-          const slaDeadline = state.slaDeadline || calculateSlaDeadline(priority);
-          const requestText = state.details ? `${activeCategory} - ${state.details}` : `${activeCategory} - ${msg}`;
-          const requestPayload = {
-            sessionId: sessionData.id || window.currentSessionId || null,
-            name: finalName || sessionData.name || window.guest?.name || 'Guest',
-            room: finalRoom || sessionData.room || window.guest?.room || 'TBD',
-            email: sessionData.email || window.guest?.email || null,
-            text: requestText,
-            priority,
-            serviceLot,
-            slaDeadline,
-            category: activeCategory,
-            lang: sessionData.language || (navigator.language || '').slice(0, 2) || null
-          };
-          const aRes = await openAteraTicket(requestPayload);
-          if (aRes && (aRes.ticketId || aRes.id || aRes.ActionID)) {
-            const ticketId = aRes.ticketId || aRes.id || aRes.ActionID;
-            delete guest.intentMemory.troubleshoot[activeCategory];
-            saveGuestState();
-            return `${getConfirmationMessage(msg, { priority: requestPayload.priority, serviceLot: requestPayload.serviceLot, slaDeadline: requestPayload.slaDeadline })} Ticket opened: ${ticketId}`;
-          }
+      if (shouldCreateTicket) {
+        const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
+        const state = tsMemory[activeCategory] || {};
+        const priority = state.priority || 'P3';
+        const serviceLot = state.serviceLot || activeCategory;
+        const slaDeadline = state.slaDeadline || calculateSlaDeadline(priority);
+        const requestText = state.details ? `${activeCategory} - ${state.details}` : `${activeCategory} - ${msg}`;
+        const requestPayload = {
+          sessionId: sessionData.id || window.currentSessionId || null,
+          name: finalName || sessionData.name || window.guest?.name || 'Guest',
+          room: finalRoom || sessionData.room || window.guest?.room || 'TBD',
+          email: sessionData.email || window.guest?.email || null,
+          text: requestText,
+          priority,
+          serviceLot,
+          slaDeadline,
+          category: activeCategory,
+          lang: sessionData.language || (navigator.language || '').slice(0, 2) || null
+        };
+        const aRes = await openAteraTicket(requestPayload);
+        if (aRes && (aRes.ticketId || aRes.id || aRes.ActionID)) {
+          const ticketId = aRes.ticketId || aRes.id || aRes.ActionID;
           delete guest.intentMemory.troubleshoot[activeCategory];
           saveGuestState();
-          return getConfirmationMessage(msg);
+          return `${getConfirmationMessage(msg, { priority: requestPayload.priority, serviceLot: requestPayload.serviceLot, slaDeadline: requestPayload.slaDeadline })} Ticket opened: ${ticketId}`;
         }
+        delete guest.intentMemory.troubleshoot[activeCategory];
+        saveGuestState();
+        return getConfirmationMessage(msg);
+      }
 
-        if (confirmationAsked) {
-          // Treat as explicit fixed
-          delete guest.intentMemory.troubleshoot[activeCategory];
-          saveGuestState();
-          return askByLang(
-            "Thanks â€” glad it's fixed. I closed the troubleshooting flow.",
-            "Merci â€” ravi que ce soit rÃ©solu. J'ai fermÃ© le flux de dÃ©pannage.",
-            "ØªÙ… Ø§Ù„Ø­Ù„ØŒ Ø´ÙƒØ±Ù‹Ø§."
-          );
-        }
-
-        // Otherwise ask for explicit confirmation before closing the troubleshooting flow
-        // Mark the troubleshooting state as awaiting explicit confirmation so a simple 'oui' can close it next turn
-        try {
-          if (!guest.intentMemory) guest.intentMemory = {};
-          if (!guest.intentMemory.troubleshoot) guest.intentMemory.troubleshoot = {};
-          if (!guest.intentMemory.troubleshoot[activeCategory]) guest.intentMemory.troubleshoot[activeCategory] = {};
-          guest.intentMemory.troubleshoot[activeCategory].awaitingConfirmation = true;
-          saveGuestState();
-        } catch (e) {
-          console.warn('Could not mark awaitingConfirmation:', e);
-        }
+      if (confirmationAsked) {
+        // Treat as explicit fixed
+        delete guest.intentMemory.troubleshoot[activeCategory];
+        saveGuestState();
         return askByLang(
-          "Please tell me whether the problem is fixed or if you still need help. Reply with 'yes, fixed' or 'no'.",
-          "Veuillez me dire si le problÃ¨me est rÃ©solu ou si vous avez encore besoin d'aide. RÃ©pondez par 'oui, rÃ©solu' ou 'non'.",
-          "Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø¥Ø®Ø¨Ø§Ø±ÙŠ Ù…Ø§ Ø¥Ø°Ø§ ÙƒØ§Ù†Øª Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ù‚Ø¯ ØªÙ… Ø­Ù„Ù‡Ø§ Ø£Ù… Ø£Ù†Ùƒ Ù…Ø§ Ø²Ù„Øª Ø¨Ø­Ø§Ø¬Ø© Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯Ø©. Ø£Ø¬Ø¨ Ø¨Ù†Ø¹Ù…ØŒ ØªÙ… Ø§Ù„Ø­Ù„ Ø£Ùˆ Ù„Ø§."
+          "Thanks â€” glad it's fixed. I closed the troubleshooting flow.",
+          "Merci â€” ravi que ce soit rÃ©solu. J'ai fermÃ© le flux de dÃ©pannage.",
+          "ØªÙ… Ø§Ù„Ø­Ù„ØŒ Ø´ÙƒØ±Ù‹Ø§."
         );
       }
+
+      // Otherwise ask for explicit confirmation before closing the troubleshooting flow
+      // Mark the troubleshooting state as awaiting explicit confirmation so a simple 'oui' can close it next turn
+      try {
+        if (!guest.intentMemory) guest.intentMemory = {};
+        if (!guest.intentMemory.troubleshoot) guest.intentMemory.troubleshoot = {};
+        if (!guest.intentMemory.troubleshoot[activeCategory]) guest.intentMemory.troubleshoot[activeCategory] = {};
+        guest.intentMemory.troubleshoot[activeCategory].awaitingConfirmation = true;
+        saveGuestState();
+      } catch (e) {
+        console.warn('Could not mark awaitingConfirmation:', e);
+      }
+      return askByLang(
+        "Please tell me whether the problem is fixed or if you still need help. Reply with 'yes, fixed' or 'no'.",
+        "Veuillez me dire si le problÃ¨me est rÃ©solu ou si vous avez encore besoin d'aide. RÃ©pondez par 'oui, rÃ©solu' ou 'non'.",
+        "Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø¥Ø®Ø¨Ø§Ø±ÙŠ Ù…Ø§ Ø¥Ø°Ø§ ÙƒØ§Ù†Øª Ø§Ù„Ù…Ø´ÙƒÙ„Ø© Ù‚Ø¯ ØªÙ… Ø­Ù„Ù‡Ø§ Ø£Ù… Ø£Ù†Ùƒ Ù…Ø§ Ø²Ù„Øª Ø¨Ø­Ø§Ø¬Ø© Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯Ø©. Ø£Ø¬Ø¨ Ø¨Ù†Ø¹Ù…ØŒ ØªÙ… Ø§Ù„Ø­Ù„ Ø£Ùˆ Ù„Ø§."
+      );
 
       if (no.test(normLower)) {
         const ticketConfirmationAsked = /le probleme persiste|le problÃ¨me persiste|does the issue still persist|does it still persist|still persist|open a ticket|ouvrir un ticket/i.test(lastTextNorm.toLowerCase());
@@ -1890,6 +1916,22 @@ async function handleUserMessage_QAOnly(userMessage) {
 
       // If this is not a confirmation reply, continue normal processing.
       console.log('Not a yes/no follow-up; continuing normal QA flow.');
+    }
+
+    if (!activeCategory && ticketIntent) {
+      const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
+      const summary = summarizeRequest(msg);
+      const requestPayload = buildAteraRequestPayload(summary, msg, finalName, finalRoom, sessionData);
+      const aRes = await openAteraTicket(requestPayload);
+      if (aRes && (aRes.ticketId || aRes.id || aRes.ActionID)) {
+        const ticketId = aRes.ticketId || aRes.id || aRes.ActionID;
+        return `Ticket créé : ${ticketId}`;
+      }
+      return askByLang(
+        "Je n'ai pas pu créer le ticket. Veuillez réessayer ou préciser le problème.",
+        "Je n'ai pas pu créer le ticket. Veuillez réessayer ou préciser le problème.",
+        "Ù…Ø¹Ù„ÙŠØ´Ø©: Ù„Ø³ØªØ·Ø§Ø¹ Ø¹Ù„Ù‰ Ø£Ù†Ù‡ Ù„ÙŠØ³ Ø¨Ø§Ù„Ø¥Ù…ÙŠÙ‡Ø§Ù† ÙŠÙ†Ø´Ø¡ Ø§Ù„ØªØ°ÙƒØ±.",
+      );
     }
 
     const serviceRequest = isServicey(msg);
