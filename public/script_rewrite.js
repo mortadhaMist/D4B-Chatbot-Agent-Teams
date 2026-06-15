@@ -272,6 +272,22 @@ async function openAteraTicket(payload) {
   }
 }
 
+function buildAteraRequestPayload(summary, msg, finalName, finalRoom, sessionData) {
+  const requestText = summary.details ? `${summary.category} - ${summary.details}` : `${summary.category} - ${msg}`;
+  return {
+    sessionId: sessionData.id || window.currentSessionId || null,
+    name: finalName || sessionData.name || window.guest?.name || 'Guest',
+    room: finalRoom || sessionData.room || window.guest?.room || 'TBD',
+    email: sessionData.email || window.guest?.email || null,
+    text: requestText,
+    priority: summary.priority,
+    serviceLot: summary.serviceLot,
+    slaDeadline: summary.slaDeadline,
+    category: summary.category,
+    lang: sessionData.language || (navigator.language || '').slice(0, 2) || null
+  };
+}
+
 async function queryAteraTicketsForWeb() {
   const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
   const guestInfo = getBestGuestInfo();
@@ -904,6 +920,10 @@ function summarizeRequest(msg) {
 
   const slaDeadline = calculateSlaDeadline(priority);
   return { category, details, priority, serviceLot, slaDeadline };
+}
+
+function isTicketCreationIntent(msg) {
+  return /\b(open a ticket|ouvrir un ticket|create ticket|cr[eé]er un ticket|ticket now|ticket please|ticket urgent|ticket urgente)\b/i.test(msg);
 }
 
 // --- FAQ HANDLING ---
@@ -1710,6 +1730,7 @@ async function handleUserMessage_QAOnly(userMessage) {
       const explicitFixed = /(fixed|resolved|resolu|regle|reglÃ©|ca marche|c'est resolu|cest resolu|fonctionne|a fonctionne|a marche|a marche|a marche)/i;
       const genericYes = /(yes|y|oui|si|ok|d'accord|bien)/i;
       const no = /(no|n|non|not yet|pas encore|nope)/i;
+      const ticketIntent = isTicketCreationIntent(msg);
       const awaiting = !!(tsMemory[activeCategory] && tsMemory[activeCategory].awaitingConfirmation);
       const lastAssistant = [...(window.__D4B_HISTORY__ || [])].reverse().find(m => m.role === 'assistant');
       const lastText = lastAssistant?.content || '';
@@ -1728,8 +1749,8 @@ async function handleUserMessage_QAOnly(userMessage) {
         );
       }
 
-      if (genericYes.test(normLower)) {
-        if (ticketConfirmationAsked) {
+      if ((genericYes.test(normLower) && ticketConfirmationAsked) || ticketIntent) {
+        if (ticketIntent || ticketConfirmationAsked) {
           const sessionData = JSON.parse(localStorage.getItem('D4B_CURRENT_SESSION') || '{}');
           const state = tsMemory[activeCategory] || {};
           const priority = state.priority || 'P3';
