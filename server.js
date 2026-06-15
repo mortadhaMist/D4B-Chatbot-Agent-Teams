@@ -460,6 +460,12 @@ async function handleApi(req, res) {
       // Append the original conversation messages
       for (const m of messages) outgoing.push(m);
 
+      // Debug log: show outgoing messages (truncated) so we can confirm KB snippets are injected
+      try {
+        const preview = outgoing.slice(0, 6).map(m => ({ role: m.role, content: typeof m.content === 'string' ? (m.content.length > 240 ? m.content.slice(0,240) + '...': m.content) : typeof m.content }));
+        console.log('Chat outgoing ->', { modelName, temperature, messagesCount: outgoing.length, preview, snippetsPresent: !!snippets });
+      } catch (e) { console.warn('Failed to serialize outgoing preview', e); }
+
       const resp = await fetch('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.MISTRAL_API_KEY}` },
         body: JSON.stringify({ model: modelName, messages: outgoing, temperature })
@@ -469,8 +475,13 @@ async function handleApi(req, res) {
       // optional DB logging
       if (resp.ok && guestInfo && Array.isArray(messages) && messages.length >= 1) {
         try {
-          const guest = await db.getGuestByRoom(guestInfo.room).catch(() => null);
-          if (guest) await db.logConversation(guest.id, messages[messages.length - 1].content, data.choices?.[0]?.message?.content || '');
+          // Only attempt to look up by room when a room identifier is provided
+          if (guestInfo.room) {
+            const guest = await db.getGuestByRoom(guestInfo.room).catch(() => null);
+            if (guest) await db.logConversation(guest.id, messages[messages.length - 1].content, data.choices?.[0]?.message?.content || '');
+          } else {
+            console.warn('Conversation not logged: guestInfo.room is undefined', { guestInfo });
+          }
         } catch (e) { console.warn('Conversation log failed', e); }
       }
 
