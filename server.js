@@ -602,13 +602,23 @@ async function handleApi(req, res) {
             let librariesError = null;
             try { if (siteId) libraries = await listDocumentLibraries(); } catch (e) { libraries = []; librariesError = e?.response?.data || e.message || String(e); }
 
+            // Find Documents library specifically
+            let documentsLib = null;
+            let allFilesInDocuments = [];
+            if (libraries && libraries.length > 0) {
+              documentsLib = libraries.find(lib => lib.name && lib.name.toLowerCase().includes('documents')) || libraries[0];
+              if (documentsLib) {
+                try {
+                  allFilesInDocuments = await listDocuments(documentsLib.id).catch(() => []);
+                } catch (e) { allFilesInDocuments = []; }
+              }
+            }
+
             let sampleDocs = [];
             let docsError = null;
             try {
-              if (libraries && libraries.length > 0) {
-                const driveId = libraries[0].id;
-                const docs = await listDocuments(driveId).catch((e) => { docsError = e?.response?.data || e.message || String(e); return []; });
-                sampleDocs = (docs || []).slice(0, 5).map(d => ({ id: d.id, name: d.name, type: d.type, webUrl: d.webUrl }));
+              if (documentsLib && allFilesInDocuments && allFilesInDocuments.length > 0) {
+                sampleDocs = allFilesInDocuments.slice(0, 5).map(d => ({ id: d.id, name: d.name, type: d.type, webUrl: d.webUrl }));
               }
             } catch (e) { sampleDocs = []; docsError = e?.response?.data || e.message || String(e); }
 
@@ -628,6 +638,8 @@ async function handleApi(req, res) {
               site_error: siteError,
               libraries,
               libraries_error: librariesError,
+              documentsLibrary: documentsLib || null,
+              allFilesInDocuments: allFilesInDocuments.map(f => ({ id: f.id, name: f.name, type: f.type, webUrl: f.webUrl })),
               sampleDocs,
               docs_error: docsError
             };
