@@ -204,16 +204,29 @@ return response.data.access_token;
 //Récupérer l’ID du site SharePoint
 
 async function getSharePointSiteId() {
-const token = await getGraphToken();
-const hostname = process.env.SHAREPOINT_HOSTNAME;
-const sitePath = process.env.SHAREPOINT_SITE_PATH;
-const url = `https://graph.microsoft.com/v1.0/sites/${hostname}:${sitePath}`;
-const response = await axios.get(url, {
-headers: {
-Authorization: `Bearer ${token}`
-}
-});
-return response.data.id;
+  const token = await getGraphToken();
+  const rawHostname = process.env.SHAREPOINT_HOSTNAME || '';
+  const rawSitePath = process.env.SHAREPOINT_SITE_PATH || '';
+  const hostname = rawHostname.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const sitePath = rawSitePath.startsWith('/') ? rawSitePath : `/${rawSitePath}`;
+  const url = `https://graph.microsoft.com/v1.0/sites/${hostname}:${sitePath}`;
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    return response.data.id;
+  } catch (err) {
+    const ctx = {
+      url,
+      hostname,
+      sitePath,
+      error: err?.response?.data || err.message || String(err)
+    };
+    console.error('getSharePointSiteId failed', ctx);
+    throw err;
+  }
 }
 
 //Lister les bibliothèques de documents
@@ -571,26 +584,54 @@ async function handleApi(req, res) {
         if (req.method === 'GET' && req.url.startsWith('/api/sharepoint/status')) {
           try {
             console.log('/api/sharepoint/status requested');
+            const rawHostname = process.env.SHAREPOINT_HOSTNAME || '';
+            const rawSitePath = process.env.SHAREPOINT_SITE_PATH || '';
+            const hostname = rawHostname.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+            const sitePath = rawSitePath.startsWith('/') ? rawSitePath : `/${rawSitePath}`;
+
             // Try to acquire Graph token
             let tokenOk = false;
-            try { await getGraphToken(); tokenOk = true; } catch (e) { tokenOk = false; }
+            let tokenError = null;
+            try { await getGraphToken(); tokenOk = true; } catch (e) { tokenOk = false; tokenError = e?.response?.data || e.message || String(e); }
 
             let siteId = null;
-            try { siteId = await getSharePointSiteId(); } catch (e) { siteId = null; }
+            let siteError = null;
+            try { siteId = await getSharePointSiteId(); } catch (e) { siteId = null; siteError = e?.response?.data || e.message || String(e); }
 
             let libraries = [];
-            try { if (siteId) libraries = await listDocumentLibraries(); } catch (e) { libraries = []; }
+            let librariesError = null;
+            try { if (siteId) libraries = await listDocumentLibraries(); } catch (e) { libraries = []; librariesError = e?.response?.data || e.message || String(e); }
 
             let sampleDocs = [];
+            let docsError = null;
             try {
               if (libraries && libraries.length > 0) {
                 const driveId = libraries[0].id;
-                const docs = await listDocuments(driveId).catch(() => []);
+                const docs = await listDocuments(driveId).catch((e) => { docsError = e?.response?.data || e.message || String(e); return []; });
                 sampleDocs = (docs || []).slice(0, 5).map(d => ({ id: d.id, name: d.name, type: d.type, webUrl: d.webUrl }));
               }
-            } catch (e) { sampleDocs = []; }
+            } catch (e) { sampleDocs = []; docsError = e?.response?.data || e.message || String(e); }
 
-            return sendJsonResponse(res, 200, { success: true, token_acquired: tokenOk, siteId: siteId || null, libraries: libraries, sampleDocs });
+            const sharepointUrl = `https://graph.microsoft.com/v1.0/sites/${hostname}:${sitePath}`;
+            const responseBody = {
+              success: true,
+              env: {
+                SHAREPOINT_HOSTNAME: rawHostname,
+                SHAREPOINT_SITE_PATH: rawSitePath,
+                normalizedHost: hostname,
+                normalizedPath: sitePath,
+                sharepointUrl
+              },
+              token_acquired: tokenOk,
+              token_error: tokenError,
+              siteId: siteId || null,
+              site_error: siteError,
+              libraries,
+              libraries_error: librariesError,
+              sampleDocs,
+              docs_error: docsError
+            };
+            return sendJsonResponse(res, 200, responseBody);
           } catch (err) {
             console.error('/api/sharepoint/status failed', err);
             return sendJsonResponse(res, 500, { success: false, error: String(err) });
