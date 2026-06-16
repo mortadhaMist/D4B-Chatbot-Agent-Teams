@@ -183,6 +183,118 @@ const GUEST_SESSIONS_FILE = path.join(DATA_DIR, 'guest_sessions.json');
 const REQUESTS_FILE = path.join(DATA_DIR, 'requests.json');
 const KB_DIR = path.join(DATA_DIR, 'kb');
 
+//Récupérer un token Graph côté backend
+const axios = require("axios");
+async function getGraphToken() {
+const url = `https://login.microsoftonline.com/${process.env.TENANT_ID}/oauth2/v2.0/token`;
+const params = new URLSearchParams();
+params.append("client_id", process.env.CLIENT_ID);
+params.append("client_secret", process.env.CLIENT_SECRET);
+params.append("scope", "https://graph.microsoft.com/.default");
+params.append("grant_type", "client_credentials");
+const response = await axios.post(url, params, {
+headers: {
+"Content-Type": "application/x-www-form-urlencoded"
+}
+});
+return response.data.access_token;
+}
+
+
+//Récupérer l’ID du site SharePoint
+
+async function getSharePointSiteId() {
+const token = await getGraphToken();
+const hostname = process.env.SHAREPOINT_HOSTNAME;
+const sitePath = process.env.SHAREPOINT_SITE_PATH;
+const url = `https://graph.microsoft.com/v1.0/sites/${hostname}:${sitePath}`;
+const response = await axios.get(url, {
+headers: {
+Authorization: `Bearer ${token}`
+}
+});
+return response.data.id;
+}
+
+//Lister les bibliothèques de documents
+async function listDocumentLibraries() {
+  const token = await getGraphToken();
+  const siteId = await getSharePointSiteId();
+  const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drives`;
+  const response = await axios.get(url, {
+headers: {
+Authorization: `Bearer ${token}`
+}
+});
+return response.data.value.map(drive => ({
+id: drive.id,
+name: drive.name,
+webUrl: drive.webUrl
+}));
+}
+
+//Lister les documents dans une bibliothèque
+async function listDocuments(driveId) {
+const token = await getGraphToken();
+const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/root/children`;
+const response = await axios.get(url, {
+headers: {
+Authorization: `Bearer ${token}`
+}
+});
+return response.data.value.map(item => ({
+id: item.id,
+name: item.name,
+type: item.folder ? "folder" : "file",
+webUrl: item.webUrl,
+downloadUrl: item["@microsoft.graph.downloadUrl"] || null
+}));
+}
+
+
+//Télécharger le contenu d’un document
+
+async function downloadDocument(driveId, itemId) {
+  const token = await getGraphToken();
+ 
+  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content`;
+ 
+  const response = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    responseType: "arraybuffer"
+  });
+ 
+  return response.data;
+}
+
+
+async function searchDocuments(driveId, query) {
+  const token = await getGraphToken();
+ 
+  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/root/search(q='${encodeURIComponent(query)}')`;
+ 
+  const response = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+ 
+  return response.data.value.map(item => ({
+    id: item.id,
+    name: item.name,
+    webUrl: item.webUrl,
+    downloadUrl: item["@microsoft.graph.downloadUrl"] || null
+  }));
+}
+
+
+
+
+
+
+
 // In-memory knowledge index: [{ filename, text }]
 let KNOWLEDGE = [];
 
@@ -432,6 +544,51 @@ function decodeJwtPayload(token) {
 
 async function handleApi(req, res) {
   try {
+    
+        // SharePoint search endpoint
+    if (req.method === 'GET' && req.url.startsWith('/api/sharepoint/search')) {
+      try {
+        const url = new URL(req.url, `http://localhost:${PORT}`);
+        const query = url.searchParams.get('q');
+
+        if (!query) {
+          return sendJsonResponse(res, 400, {
+            success: false,
+            error: "Paramètre q obligatoire"
+          });
+        }
+
+        const libraries = await listDocumentLibraries();
+
+        const documentsLibrary = libraries.find(lib =>
+          lib.name.toLowerCase().includes("documents")
+        );
+
+        if (!documentsLibrary) {
+          return sendJsonResponse(res, 404, {
+            success: false,
+            error: "Bibliothèque Documents introuvable"
+          });
+        }
+
+        const results = await searchDocuments(documentsLibrary.id, query);
+
+        return sendJsonResponse(res, 200, {
+          success: true,
+          query,
+          results
+        });
+
+      } catch (error) {
+        console.error("Erreur SharePoint search:", error.response?.data || error.message);
+
+        return sendJsonResponse(res, 500, {
+          success: false,
+          error: error.response?.data || error.message
+        });
+      }
+    }
+    
     // Chat proxy
     if (req.method === 'POST' && req.url === '/api/chat') {
       if (!process.env.MISTRAL_API_KEY) return sendJsonResponse(res, 500, { error: 'Missing MISTRAL_API_KEY on server' });
@@ -1185,10 +1342,6 @@ async function initTelegramBot() {
 
 server.listen(PORT, async () => {
   console.log(` Server running at http://localhost:${PORT}`);
-  console.log(` Main chat: http://localhost:${PORT}/chat.html`);
-  console.log(` Staff logs: http://localhost:${PORT}/log.html`);
-  console.log(` Database viewer: http://localhost:${PORT}/database.html`);
-  console.log(` Staff dashboard: http://localhost:${PORT}/dashboard-simple.html`);
 
   try {
     // Initialize database
