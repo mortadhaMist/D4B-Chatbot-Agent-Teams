@@ -247,9 +247,9 @@ webUrl: drive.webUrl
 }
 
 //Lister les documents dans une bibliothèque
-async function listDocuments(driveId) {
+async function listDocuments(driveId, folderId = 'root') {
 const token = await getGraphToken();
-const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/root/children`;
+const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${folderId}/children`;
 const response = await axios.get(url, {
 headers: {
 Authorization: `Bearer ${token}`
@@ -283,10 +283,10 @@ async function downloadDocument(driveId, itemId) {
 }
 
 
-async function searchDocuments(driveId, query) {
+async function searchDocuments(driveId, query, folderId = 'root') {
   const token = await getGraphToken();
  
-  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/root/search(q='${encodeURIComponent(query)}')`;
+  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${folderId}/search(q='${encodeURIComponent(query)}')`;
  
   const response = await axios.get(url, {
     headers: {
@@ -300,6 +300,18 @@ async function searchDocuments(driveId, query) {
     webUrl: item.webUrl,
     downloadUrl: item["@microsoft.graph.downloadUrl"] || null
   }));
+}
+
+// Find the target folder by name (e.g., "D4B ChatBot Teams")
+async function findFolderByName(driveId, targetFolderName, parentFolderId = 'root') {
+  try {
+    const items = await listDocuments(driveId, parentFolderId);
+    const targetFolder = items.find(item => item.type === 'folder' && item.name && item.name.toLowerCase().includes(targetFolderName.toLowerCase()));
+    return targetFolder || null;
+  } catch (e) {
+    console.warn('findFolderByName failed', e?.message || e);
+    return null;
+  }
 }
 
 
@@ -421,7 +433,12 @@ async function getSharePointSnippets(query, maxSnippets = 3) {
     if (!libs || libs.length === 0) return '';
     const documentsLib = libs.find(lib => lib.name && lib.name.toLowerCase().includes('documents')) || libs[0];
     if (!documentsLib) return '';
-    const results = await searchDocuments(documentsLib.id, query);
+    
+    // Find the target KB folder
+    const targetFolder = await findFolderByName(documentsLib.id, 'D4B ChatBot Teams');
+    const folderId = targetFolder ? targetFolder.id : 'root';
+    
+    const results = await searchDocuments(documentsLib.id, query, folderId);
     if (!results || results.length === 0) return '';
     const pieces = [];
     for (let i = 0; i < Math.min(maxSnippets, results.length); i++) {
@@ -605,12 +622,24 @@ async function handleApi(req, res) {
             // Find Documents library specifically
             let documentsLib = null;
             let allFilesInDocuments = [];
+            let targetFolder = null;
+            let targetFolderFiles = [];
+            let targetFolderError = null;
+            
             if (libraries && libraries.length > 0) {
               documentsLib = libraries.find(lib => lib.name && lib.name.toLowerCase().includes('documents')) || libraries[0];
               if (documentsLib) {
                 try {
                   allFilesInDocuments = await listDocuments(documentsLib.id).catch(() => []);
                 } catch (e) { allFilesInDocuments = []; }
+                
+                // Find the target KB folder
+                try {
+                  targetFolder = await findFolderByName(documentsLib.id, 'D4B ChatBot Teams');
+                  if (targetFolder) {
+                    targetFolderFiles = await listDocuments(documentsLib.id, targetFolder.id).catch(() => []);
+                  }
+                } catch (e) { targetFolderError = e?.response?.data || e.message || String(e); }
               }
             }
 
@@ -641,7 +670,10 @@ async function handleApi(req, res) {
               documentsLibrary: documentsLib || null,
               allFilesInDocuments: allFilesInDocuments.map(f => ({ id: f.id, name: f.name, type: f.type, webUrl: f.webUrl })),
               sampleDocs,
-              docs_error: docsError
+              docs_error: docsError,
+              targetKBFolder: targetFolder ? { id: targetFolder.id, name: targetFolder.name, type: targetFolder.type } : null,
+              filesInTargetFolder: targetFolderFiles.map(f => ({ id: f.id, name: f.name, type: f.type, webUrl: f.webUrl })),
+              targetFolder_error: targetFolderError
             };
             return sendJsonResponse(res, 200, responseBody);
           } catch (err) {
