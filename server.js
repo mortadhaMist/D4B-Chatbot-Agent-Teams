@@ -400,6 +400,44 @@ function searchKnowledge(query, maxSnippets = 3) {
   return pieces.join('\n');
 }
 
+// Fetch snippets from SharePoint (uses Graph helper functions defined above)
+async function getSharePointSnippets(query, maxSnippets = 3) {
+  try {
+    if (!query) return '';
+    const libs = await listDocumentLibraries();
+    if (!libs || libs.length === 0) return '';
+    const documentsLib = libs.find(lib => lib.name && lib.name.toLowerCase().includes('documents')) || libs[0];
+    if (!documentsLib) return '';
+    const results = await searchDocuments(documentsLib.id, query);
+    if (!results || results.length === 0) return '';
+    const pieces = [];
+    for (let i = 0; i < Math.min(maxSnippets, results.length); i++) {
+      const it = results[i];
+      try {
+        const raw = await downloadDocument(documentsLib.id, it.id).catch(() => null);
+        if (!raw) continue;
+        const name = it.name || 'document';
+        const ext = (path.extname(name) || '').toLowerCase();
+        let text = '';
+        if (ext === '.docx') {
+          text = extractDocxText(Buffer.from(raw));
+        } else {
+          try { text = Buffer.from(raw).toString('utf8').replace(/\s+/g, ' ').trim(); } catch (e) { text = ''; }
+        }
+        if (!text) continue;
+        if (text.length > 400) text = text.slice(0, 400) + '...';
+        pieces.push(`From SharePoint (${name}): ${text}`);
+      } catch (e) {
+        console.warn('SharePoint snippet fetch failed for', it?.name, e?.message || e);
+      }
+    }
+    return pieces.join('\n');
+  } catch (e) {
+    console.warn('getSharePointSnippets failed', e?.message || e);
+    return '';
+  }
+}
+
 // Initialize data directory and files
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(REQUESTS_FILE)) {
@@ -441,23 +479,7 @@ function saveGuestSessions() {
 
 // Load sessions on startup
 loadGuestSessions();
-// Load knowledge index from data/kb
-loadKnowledgeIndex();
-// Watch KB directory for changes and reload index (debounced)
-try {
-  let kbReloadTimer = null;
-  if (fs.existsSync(KB_DIR)) {
-    fs.watch(KB_DIR, { persistent: false }, (eventType, filename) => {
-      if (kbReloadTimer) clearTimeout(kbReloadTimer);
-      kbReloadTimer = setTimeout(() => {
-        console.log('KB directory changed, reloading index...');
-        loadKnowledgeIndex();
-      }, 500);
-    });
-  }
-} catch (e) {
-  console.warn('Failed to watch KB directory:', e);
-}
+// SharePoint will be used as the knowledge source (local data/kb is not loaded)
 
 const mimeTypes = {
   '.html': 'text/html',
@@ -545,8 +567,38 @@ function decodeJwtPayload(token) {
 async function handleApi(req, res) {
   try {
     
+        // SharePoint status/debug endpoint
+        if (req.method === 'GET' && req.url.startsWith('/api/sharepoint/status')) {
+          try {
+            console.log('/api/sharepoint/status requested');
+            // Try to acquire Graph token
+            let tokenOk = false;
+            try { await getGraphToken(); tokenOk = true; } catch (e) { tokenOk = false; }
+
+            let siteId = null;
+            try { siteId = await getSharePointSiteId(); } catch (e) { siteId = null; }
+
+            let libraries = [];
+            try { if (siteId) libraries = await listDocumentLibraries(); } catch (e) { libraries = []; }
+
+            let sampleDocs = [];
+            try {
+              if (libraries && libraries.length > 0) {
+                const driveId = libraries[0].id;
+                const docs = await listDocuments(driveId).catch(() => []);
+                sampleDocs = (docs || []).slice(0, 5).map(d => ({ id: d.id, name: d.name, type: d.type, webUrl: d.webUrl }));
+              }
+            } catch (e) { sampleDocs = []; }
+
+            return sendJsonResponse(res, 200, { success: true, token_acquired: tokenOk, siteId: siteId || null, libraries: libraries, sampleDocs });
+          } catch (err) {
+            console.error('/api/sharepoint/status failed', err);
+            return sendJsonResponse(res, 500, { success: false, error: String(err) });
+          }
+        }
+
         // SharePoint search endpoint
-    if (req.method === 'GET' && req.url.startsWith('/api/sharepoint/search')) {
+        if (req.method === 'GET' && req.url.startsWith('/api/sharepoint/search')) {
       try {
         const url = new URL(req.url, `http://localhost:${PORT}`);
         const query = url.searchParams.get('q');
@@ -595,10 +647,18 @@ async function handleApi(req, res) {
       const { messages = [], model, temperature = 0.4, sessionId, guestInfo, responseFormat } = await readJson(req).catch(e => ({}));
       const modelName = model && model.toLowerCase().startsWith('mistral') ? model : 'mistral-medium-latest';
 
-      // Attach KB snippets
+      // Attach KB snippets (SharePoint only)
       const lastUser = Array.isArray(messages) ? [...messages].reverse().find(m => m.role === 'user') : null;
       const userText = lastUser ? (typeof lastUser.content === 'string' ? lastUser.content : JSON.stringify(lastUser.content)) : '';
-      const snippets = lastUser ? searchKnowledge(userText, 3) : '';
+      let snippets = '';
+      if (lastUser && process.env.SHAREPOINT_HOSTNAME && process.env.SHAREPOINT_SITE_PATH) {
+        try {
+          snippets = await getSharePointSnippets(userText, 3);
+        } catch (e) {
+          console.warn('SharePoint snippets fetch failed in /api/chat', e?.message || e);
+          snippets = '';
+        }
+      }
 
       // Determine if we should force the D4B troubleshooting template (French)
       let format = responseFormat || null;
