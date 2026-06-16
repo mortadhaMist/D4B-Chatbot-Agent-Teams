@@ -314,6 +314,14 @@ async function findFolderByName(driveId, targetFolderName, parentFolderId = 'roo
   }
 }
 
+async function getTargetKbFolderId(driveId, folderName = 'D4B ChatBot Teams') {
+  if (process.env.SHAREPOINT_KB_FOLDER_ID) {
+    return process.env.SHAREPOINT_KB_FOLDER_ID.trim();
+  }
+  const folder = await findFolderByName(driveId, folderName);
+  return folder ? folder.id : null;
+}
+
 
 
 
@@ -434,9 +442,11 @@ async function getSharePointSnippets(query, maxSnippets = 3) {
     const documentsLib = libs.find(lib => lib.name && lib.name.toLowerCase().includes('documents')) || libs[0];
     if (!documentsLib) return '';
     
-    // Find the target KB folder
-    const targetFolder = await findFolderByName(documentsLib.id, 'D4B ChatBot Teams');
-    const folderId = targetFolder ? targetFolder.id : 'root';
+    const folderId = await getTargetKbFolderId(documentsLib.id);
+    if (!folderId) {
+      console.warn('No SharePoint KB folder found for snippets');
+      return '';
+    }
     
     const results = await searchDocuments(documentsLib.id, query, folderId);
     if (!results || results.length === 0) return '';
@@ -708,11 +718,20 @@ async function handleApi(req, res) {
           });
         }
 
-        const results = await searchDocuments(documentsLibrary.id, query);
+        const folderId = await getTargetKbFolderId(documentsLibrary.id);
+        if (!folderId) {
+          return sendJsonResponse(res, 404, {
+            success: false,
+            error: "Dossier KB SharePoint introuvable"
+          });
+        }
+
+        const results = await searchDocuments(documentsLibrary.id, query, folderId);
 
         return sendJsonResponse(res, 200, {
           success: true,
           query,
+          folderId,
           results
         });
 
