@@ -17,13 +17,21 @@ SERVER_URL=
 MICROSOFT_APP_ID=
 MICROSOFT_APP_PASSWORD=
 MICROSOFT_APP_TENANT_ID=
+TENANT_ID=
+CLIENT_ID=
+CLIENT_SECRET=
+SHAREPOINT_HOSTNAME=
+SHAREPOINT_SITE_PATH=
+SHAREPOINT_KB_FOLDER_ID=
+ALLOW_INTERNET_FALLBACK=false
 `;
   fs.writeFileSync(envPath, envTemplate, 'utf8');
-  console.log('ðŸ“„ Created missing .env file with placeholders');
+  console.log('📄 Created missing .env file with placeholders');
 }
 dotenv.config({ path: envPath });
 
 const PORT = process.env.PORT || 8080;
+const ALLOW_INTERNET_FALLBACK = String(process.env.ALLOW_INTERNET_FALLBACK || 'false').toLowerCase() === 'true';
 const SYSTEM_PROMPT = `Vous êtes un assistant support IT Digital4Business pour les équipes D4B.
 Répondez uniquement en français.
 Vous supportez la classification des incidents IT, l'orientation des lots de service, la priorisation des tickets et le dépannage des problèmes informatiques des équipes D4B.
@@ -770,7 +778,13 @@ async function handleApi(req, res) {
       if (!format && (lower.includes('bsod') || lower.includes('Ã©cran bleu') || lower.includes('blue screen'))) format = 'D4B_troubleshoot_fr';
 
       const outgoing = [];
-      if (snippets) outgoing.push({ role: 'system', content: `Relevant knowledge:\n${snippets}` });
+      if (snippets) {
+        outgoing.push({ role: 'system', content: `Relevant knowledge:\n${snippets}` });
+      } else if (ALLOW_INTERNET_FALLBACK) {
+        outgoing.push({ role: 'system', content: `Aucune information pertinente n'a été trouvée dans la base SharePoint. Vous pouvez utiliser vos connaissances générales/internet pour répondre, sans utiliser de fichiers locaux ou d'autres bases internes.` });
+      } else {
+        outgoing.push({ role: 'system', content: `Aucune information pertinente n'a été trouvée dans la base SharePoint. Répondez uniquement à partir de vos connaissances internes, sans utiliser d'autres bases de données ni de fichiers locaux.` });
+      }
 
       // If requested, instruct the assistant to reply using the D4B-friendly French troubleshooting template
       if (format === 'D4B_troubleshoot_fr') {
