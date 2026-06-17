@@ -161,7 +161,10 @@ try {
         }
 
         const reply = data?.choices?.[0]?.message?.content || data?.error || 'No response from assistant';
-        await context.sendActivity(reply);
+        const replyText = data?.sharepoint_used
+          ? `${reply}\n\n✅ Source SharePoint utilisée pour cette réponse.`
+          : reply;
+        await context.sendActivity(replyText);
       } catch (e) {
         console.error('Teams->chat proxy error:', e);
         await context.sendActivity('Sorry, an error occurred while processing your message.');
@@ -820,7 +823,8 @@ async function handleApi(req, res) {
         } catch (e) { console.warn('Conversation log failed', e); }
       }
 
-      return res.writeHead(resp.ok ? 200 : (resp.status || 500), { 'Content-Type': 'application/json' }), res.end(JSON.stringify(data));
+      const responsePayload = { ...data, sharepoint_used: !!snippets };
+      return res.writeHead(resp.ok ? 200 : (resp.status || 500), { 'Content-Type': 'application/json' }), res.end(JSON.stringify(responsePayload));
     }
 
     // Atera ticket proxy
