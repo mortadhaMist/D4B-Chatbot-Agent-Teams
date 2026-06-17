@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: solaria-bot-v3
+    name: D4B-Chatbot-Teams
     runtime: node
     startCommand: npm start
     buildCommand: npm install
