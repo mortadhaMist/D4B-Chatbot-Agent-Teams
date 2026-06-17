@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const dotenv = require('dotenv');
-const Jimp = require('jimp');
 
 const envPath = path.join(__dirname, '.env');
 if (!fs.existsSync(envPath)) {
@@ -894,128 +893,9 @@ async function handleApi(req, res) {
       }
     }
 
-    // Image upload + enhanced analysis
+    // Image upload endpoint removed (Jimp no longer used)
     if (req.method === 'POST' && req.url === '/api/upload-image') {
-      const body = await readJson(req);
-      const { filename = `img-${Date.now()}.jpg`, data } = body || {};
-      if (!data) return sendJsonResponse(res, 400, { error: 'Missing image data' });
-
-      const uploadsDir = path.join(__dirname, 'public', 'uploads');
-      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-      const buffer = Buffer.from(data, 'base64');
-      const baseName = `${Date.now()}-${filename}`;
-      const outPath = path.join(uploadsDir, baseName);
-      fs.writeFileSync(outPath, buffer);
-
-      const result = { success: true, url: `/uploads/${baseName}`, filename: baseName };
-
-      try {
-        const img = await Jimp.read(buffer);
-        result.width = img.bitmap.width;
-        result.height = img.bitmap.height;
-        result.mime = img.getMIME ? img.getMIME() : null;
-        try {
-          const avg = img.clone().resize(1, 1);
-          const hex = avg.getPixelColor(0, 0);
-          const rgba = Jimp.intToRGBA(hex);
-          result.dominantColor = { r: rgba.r, g: rgba.g, b: rgba.b };
-          result.dominantColorHex = ((rgba.r << 16) + (rgba.g << 8) + rgba.b).toString(16).padStart(6, '0');
-        } catch (e) {
-          result.dominantColorError = String(e);
-        }
-
-        result.aspectRatio = (img.bitmap.width / Math.max(1, img.bitmap.height)).toFixed(2);
-        result.orientation = img.bitmap.width >= img.bitmap.height ? 'landscape' : 'portrait';
-
-        try {
-          const thumb = img.clone().resize(240, Jimp.AUTO);
-          const thumbName = `thumb-${baseName}`;
-          const thumbPath = path.join(uploadsDir, thumbName);
-          await thumb.quality(70).writeAsync(thumbPath);
-          result.thumbnail = `/uploads/${thumbName}`;
-        } catch (e) {
-          result.thumbnailError = String(e);
-        }
-
-        try {
-          const { createWorker } = require('tesseract.js');
-          const worker = createWorker({ logger: m => {} });
-          await worker.load();
-          try { await worker.loadLanguage('eng'); await worker.initialize('eng'); }
-          catch (e) {}
-          const { data: ocrData } = await worker.recognize(buffer).catch(e => ({ data: { text: '' } }));
-          result.ocrText = (ocrData && ocrData.text) ? String(ocrData.text).trim() : '';
-          await worker.terminate();
-        } catch (e) {
-          result.ocrError = String(e);
-        }
-
-        if (process.env.GOOGLE_VISION_API_KEY) {
-          try {
-            const gReq = {
-              requests: [
-                { image: { content: buffer.toString('base64') }, features: [{ type: 'LABEL_DETECTION', maxResults: 10 }, { type: 'TEXT_DETECTION', maxResults: 5 }] }
-              ]
-            };
-            const gv = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${process.env.GOOGLE_VISION_API_KEY}`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(gReq)
-            });
-            const gvJson = await gv.json().catch(() => ({}));
-            const r0 = gvJson.responses && gvJson.responses[0] ? gvJson.responses[0] : {};
-            if (r0.labelAnnotations) result.labels = r0.labelAnnotations.map(l => ({ description: l.description, score: l.score }));
-            if (r0.textAnnotations && r0.textAnnotations[0]) result.googleText = r0.textAnnotations[0].description;
-            result.googleVisionRaw = r0;
-          } catch (e) {
-            result.googleVisionError = String(e);
-          }
-        }
-
-        const pieces = [];
-        pieces.push(`Size: ${result.width}x${result.height}`);
-        if (result.dominantColor) pieces.push(`Dominant color: rgb(${result.dominantColor.r},${result.dominantColor.g},${result.dominantColor.b})`);
-        if (result.ocrText && result.ocrText.length) pieces.push(`Contains text (${Math.min(200, result.ocrText.length)} chars): "${result.ocrText.slice(0,200).replace(/\n/g,' ')}${result.ocrText.length>200? '...' : ''}"`);
-        if (result.labels && result.labels.length) pieces.push(`Labels: ${result.labels.slice(0,4).map(l=>l.description).join(', ')}`);
-        result.analysis = pieces.join(' | ');
-
-        if (process.env.MISTRAL_API_KEY) {
-          try {
-            const modelName = 'mistral-medium-latest';
-            const promptSystem = `You are an assistant that judges whether an image is related to a user's question or context. Respond concisely. Return a short JSON object with keys: related (true/false), confidence (0-1), reason (short), summary (one-sentence), actions (array of suggested next actions).`;
-            const payload = {
-              model: modelName,
-              messages: [
-                { role: 'system', content: promptSystem },
-                { role: 'user', content: `Image metadata and OCR/text:\n${JSON.stringify({ filename: baseName, width: result.width, height: result.height, dominantColorHex: result.dominantColorHex, ocrText: result.ocrText || '', labels: result.labels || [] }, null, 2)}` }
-              ],
-              temperature: 0.2
-            };
-
-            const mResp = await fetch('https://api.mistral.ai/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.MISTRAL_API_KEY}` }, body: JSON.stringify(payload) });
-            const mJson = await mResp.json().catch(() => ({}));
-            result.mistralRaw = mJson;
-            const mText = mJson?.choices?.[0]?.message?.content || (typeof mJson === 'string' ? mJson : JSON.stringify(mJson));
-            result.mistralText = mText;
-            try {
-              result.mistral = JSON.parse(mText);
-            } catch (e) {
-              const jsStart = mText.indexOf('{');
-              const jsEnd = mText.lastIndexOf('}');
-              if (jsStart >= 0 && jsEnd > jsStart) {
-                try { result.mistral = JSON.parse(mText.slice(jsStart, jsEnd + 1)); } catch (ee) { result.mistralParseError = String(ee); }
-              } else {
-                result.mistralParseError = 'No JSON found in response';
-              }
-            }
-          } catch (e) {
-            result.mistralError = String(e);
-          }
-        }
-      } catch (e) {
-        console.warn('Image analysis failed:', e);
-        result.analysisError = String(e);
-      }
-
-      return sendJsonResponse(res, 200, result);
+      return sendJsonResponse(res, 501, { error: 'Image upload service disabled' });
     }
 
     // Document upload for KB
