@@ -392,7 +392,7 @@ function syncGuestStateFromSession() {
 const SYSTEM_PROMPT_FR = `Vous êtes un assistant support IT Digital4Business pour les équipes D4B.
 Répondez uniquement en français.
 Vous supportez la classification des incidents IT, l'orientation des lots de service, la priorisation des tickets et le dépannage des problèmes informatiques des équipes D4B.
-Ne répondez qu'aux questions liées au support IT : réseau, Wi-Fi, alimentation, matériel, imprimantes, terminaux, POS/Aloha, gestion du menu Red Biscuit, connectivité, authentification, paiements et infrastructure.
+Ne répondez qu'aux questions liées au support IT : réseau, Wi-Fi, alimentation, matériel, imprimantes, terminaux, connectivité, authentification et infrastructure.
 Ne répondez pas aux questions non liées au support IT, aux commandes, aux promotions, au service client ou aux produits.
 Si l'utilisateur demande quelque chose en dehors du support IT, expliquez poliment que vous ne gérez que les incidents IT D4B et demandez une description du problème technique.
 Utilisez les extraits de la base de connaissances lorsque disponibles.`;
@@ -793,7 +793,7 @@ function classifyIntent(message) {
     return { type: "name_room", urgency: "normal" };
   }
 
-  const incidentPatterns = [/incident|panne|probl[eÃ¨]me|support|aide|help|urgent|urgence|erreur|bug|caisse|pos|aloha|ncr|rÃ©seau|wifi|internet|connexion|imprimante|terminal|ticket|login|mot de passe|paiement/];
+  const incidentPatterns = [/incident|panne|probl[eÃ¨]me|support|aide|help|urgent|urgence|erreur|bug|caisse|pos|ncr|rÃ©seau|wifi|internet|connexion|imprimante|terminal|ticket|login|mot de passe|paiement/];
   if (incidentPatterns.some(pattern => pattern.test(lowerMessage))) {
     return { type: "incident", urgency: IT_CRITICAL.test(lowerMessage) ? "high" : "normal" };
   }
