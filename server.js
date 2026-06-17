@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const dotenv = require('dotenv');
-const D4BTelegramBot = require('./telegram-bot');
 const Jimp = require('jimp');
 
 const envPath = path.join(__dirname, '.env');
@@ -12,7 +11,6 @@ if (!fs.existsSync(envPath)) {
 SKIP_APPROVAL=false
 ATERA_API_KEY=
 ATERA_API_URL=https://app.atera.com
-TELEGRAM_BOT_TOKEN=
 SERVER_URL=
 MICROSOFT_APP_ID=
 MICROSOFT_APP_PASSWORD=
@@ -181,9 +179,6 @@ try {
 
 console.log("API KEY Loaded:", process.env.MISTRAL_API_KEY ? "âœ…" : "âŒ");
 console.log("SKIP_APPROVAL:", process.env.SKIP_APPROVAL === "true" ? "ðŸš€ ENABLED (Auto-approval active)" : " DISABLED (Manual approval required)");
-
-let telegramBot = null;
-
 // Import database
 const DatabaseClass = require('./database');
 const db = new DatabaseClass();
@@ -1092,26 +1087,6 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Telegram webhook endpoint
-  if (req.url === '/webhook') {
-    if (req.method === 'GET') {
-      return sendJsonResponse(res, 200, { status: 'Webhook endpoint active', bot_available: !!telegramBot });
-    }
-
-    if (req.method === 'POST') {
-      try {
-        const update = await readJson(req);
-        if (!telegramBot) {
-          return sendJsonResponse(res, 500, { error: 'Telegram bot not initialized' });
-        }
-        telegramBot.processUpdate(update);
-        return sendJsonResponse(res, 200, { status: 'Webhook processed', bot_available: true });
-      } catch (error) {
-        console.error('âŒ Telegram webhook error:', error);
-        return sendJsonResponse(res, 400, { error: 'Invalid webhook payload', details: String(error) });
-      }
-    }
-  }
 
   // Teams messages endpoint
   if (req.url === '/api/messages' && req.method === 'POST') {
@@ -1508,20 +1483,6 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-async function initTelegramBot() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) {
-    console.log('âš ï¸ TELEGRAM_BOT_TOKEN not set; Telegram bot disabled.');
-    return;
-  }
-
-  const serverUrl = process.env.SERVER_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-  telegramBot = new D4BTelegramBot(token, serverUrl);
-  if (telegramBot.useWebhook) {
-    await telegramBot.setupWebhook();
-  }
-}
-
 server.listen(PORT, async () => {
   console.log(` Server running at http://localhost:${PORT}`);
 
@@ -1532,11 +1493,5 @@ server.listen(PORT, async () => {
   } catch (error) {
     console.error('âŒ Failed to initialize database:', error);
     process.exit(1);
-  }
-
-  try {
-    await initTelegramBot();
-  } catch (error) {
-    console.error('âŒ Failed to initialize Telegram bot:', error);
   }
 });
