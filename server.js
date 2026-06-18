@@ -4,28 +4,7 @@ const path = require('path');
 const { URL } = require('url');
 const dotenv = require('dotenv');
 
-const envPath = path.join(__dirname, '.env');
-if (!fs.existsSync(envPath)) {
-  const envTemplate = `MISTRAL_API_KEY=
-SKIP_APPROVAL=false
-ATERA_API_KEY=
-ATERA_API_URL=https://app.atera.com
-SERVER_URL=
-MICROSOFT_APP_ID=
-MICROSOFT_APP_PASSWORD=
-MICROSOFT_APP_TENANT_ID=
-TENANT_ID=
-CLIENT_ID=
-CLIENT_SECRET=
-SHAREPOINT_HOSTNAME=
-SHAREPOINT_SITE_PATH=
-SHAREPOINT_KB_FOLDER_ID=
-ALLOW_INTERNET_FALLBACK=false
-`;
-  fs.writeFileSync(envPath, envTemplate, 'utf8');
-  console.log('📄 Created missing .env file with placeholders');
-}
-dotenv.config({ path: envPath });
+dotenv.config();
 
 const PORT = process.env.PORT || 8080;
 const ALLOW_INTERNET_FALLBACK = String(process.env.ALLOW_INTERNET_FALLBACK || 'false').toLowerCase() === 'true';
