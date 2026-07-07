@@ -158,7 +158,7 @@ function appendTechnicienPromptOnce(replyText) {
     .replace(/🎫\s*Pour créer un ticket, écrivez « ticket »\.?/gi, '')
     .trim();
 
-  return `${cleaned}\n\n${prompt}`;
+  return `${cleaned}\n\n\u200B\n\n${prompt}`;
 }
 let teamsAdapter = null;
 let teamsBotHandler = null;
@@ -280,11 +280,12 @@ const teamsConversationKey =
 // Message d'accueil seulement au début si l'utilisateur dit juste bonjour
 // Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
-const welcomeText =
-  `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)\n\n\n` +
-  `Voici ce que je peux faire pour vous :\n\n\n` +
-  `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.\n\n\n` +
-  `Pour commencer, dites-moi ce qui ne va pas 👇`;
+const welcomeText = [
+  `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)`,
+  `Voici ce que je peux faire pour vous :`,
+  `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.`,
+  `Pour commencer, dites-moi ce qui ne va pas 👇`
+].join('\n\n\u200B\n\n');
 
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
   await context.sendActivity(appendTechnicienPromptOnce(welcomeText));
