@@ -16,7 +16,150 @@ Ne répondez pas aux questions non liées au support IT, aux commandes, aux prom
 Si l'utilisateur demande quelque chose en dehors du support IT, expliquez poliment que vous ne gérez que les incidents IT D4B et demandez une description du problème technique.
 Utilisez les extraits de la base de connaissances lorsque disponibles.
 `;
+const teamsConversationHistory = new Map();
+const MAX_TEAMS_HISTORY_TURNS = 20;
 
+function normalizeTextForIntent(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function isGreetingOnly(text) {
+  const normalized = normalizeTextForIntent(text);
+  return /^(bonjour|bonsoir|salut|hello|hi|coucou|bjr)[\s!.?]*$/i.test(normalized);
+}
+
+function isCreateTicketRequest(text) {
+  const normalized = normalizeTextForIntent(text);
+  return /^(technicien|ticket|creer ticket|cree ticket|ouvrir ticket|ouvrir un ticket|1)$/i.test(normalized);
+}
+
+function getTeamsConversationHistory(key) {
+  return teamsConversationHistory.get(key) || [];
+}
+
+function saveTeamsConversationTurn(key, userText, botText) {
+  const history = getTeamsConversationHistory(key);
+  history.push({
+    at: new Date().toISOString(),
+    user: String(userText || '').trim(),
+    assistant: String(botText || '').trim()
+  });
+  teamsConversationHistory.set(key, history.slice(-MAX_TEAMS_HISTORY_TURNS));
+}
+
+function getTeamsUserEmail(context) {
+  const activity = context?.activity || {};
+  const channelData = activity.channelData || {};
+
+  return (
+    channelData?.tenant?.userPrincipalName ||
+    channelData?.user?.userPrincipalName ||
+    channelData?.from?.userPrincipalName ||
+    channelData?.teamsUser?.userPrincipalName ||
+    activity.from?.userPrincipalName ||
+    activity.from?.email ||
+    null
+  );
+}
+
+function classifyTeamsTicket(text) {
+  const normalized = normalizeTextForIntent(text);
+
+  let priority = 'P3';
+  let category = 'General IT Support';
+  let serviceLot = 'Lot 1 - Helpdesk / Service Desk';
+
+  if (
+    normalized.includes('caisse') ||
+    normalized.includes('ncr') ||
+    normalized.includes('tpe') ||
+    normalized.includes('encaissement') ||
+    normalized.includes('paiement')
+  ) {
+    category = 'Caisse et encaissement';
+    serviceLot = 'Lot 2 - Support caisse / encaissement';
+    priority = 'P2';
+  }
+
+  if (
+    normalized.includes('internet') ||
+    normalized.includes('reseau') ||
+    normalized.includes('wifi') ||
+    normalized.includes('wi-fi') ||
+    normalized.includes('connexion')
+  ) {
+    category = 'Réseau / Wi-Fi';
+    serviceLot = 'Lot 3 - Réseau / Infrastructure';
+    priority = 'P2';
+  }
+
+  if (
+    normalized.includes('imprimante') ||
+    normalized.includes('ticket') ||
+    normalized.includes('impression')
+  ) {
+    category = 'Imprimante';
+    serviceLot = 'Lot 1 - Helpdesk / Service Desk';
+  }
+
+  if (
+    normalized.includes('bloque') ||
+    normalized.includes('bloquee') ||
+    normalized.includes('hors service') ||
+    normalized.includes('panne') ||
+    normalized.includes('urgent') ||
+    normalized.includes('impossible')
+  ) {
+    priority = priority === 'P3' ? 'P2' : priority;
+  }
+
+  return { priority, category, serviceLot };
+}
+
+function buildTeamsTicketDescription(history, triggerText, userName, userEmail) {
+  const conversationLines = history.map((turn, index) => {
+    return [
+      `--- Message ${index + 1} ---`,
+      `Utilisateur: ${turn.user}`,
+      `Assistant: ${turn.assistant}`
+    ].join('\n');
+  });
+
+  return [
+    `Ticket créé depuis Microsoft Teams.`,
+    `Demandeur Teams: ${userName || 'Unknown'}`,
+    `Email Teams: ${userEmail || 'Unknown'}`,
+    '',
+    'Résumé / conversation:',
+    conversationLines.length ? conversationLines.join('\n') : 'Aucun détail avant la demande de création du ticket.',
+    '',
+    `Déclencheur utilisateur: ${triggerText || 'technicien'}`
+  ].join('\n');
+}
+
+function getAteraTicketId(data) {
+  return data?.TicketID ||
+    data?.TicketId ||
+    data?.ticketId ||
+    data?.id ||
+    data?.Id ||
+    data?.ID ||
+    data?.TicketNumber ||
+    null;
+}
+
+function appendTechnicienPromptOnce(replyText) {
+  const prompt = '🎫 Pour créer un ticket, écrivez « technicien ».';
+  const cleaned = String(replyText || '')
+    .replace(/🎫\s*Pour créer un ticket, écrivez « technicien »\.?/gi, '')
+    .trim();
+
+  return `${cleaned}\n\n${prompt}`;
+}
 let teamsAdapter = null;
 let teamsBotHandler = null;
 try {
@@ -105,46 +248,119 @@ try {
         console.warn('Failed to dispatch typing status indicator activity:', typingError);
       }
 
-      const text = (context.activity && context.activity.text) ? context.activity.text : '';
-      const userName = context.activity.from?.name || 'TeamsUser';
-      // Forward user message to existing chat proxy
-      try {
-        const proxyUrl = process.env.CHAT_PROXY_URL || `http://127.0.0.1:${PORT}/api/chat`;
-        const resp = await fetch(proxyUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: text }],
-            sessionId: `teams-${context.activity.from?.id || Date.now()}`,
-            guestInfo: { name: userName }
-          })
-        });
+const rawText = (context.activity && context.activity.text) ? context.activity.text : '';
+const text = String(rawText || '').trim();
+const userName = context.activity.from?.name || 'TeamsUser';
+const userEmail = getTeamsUserEmail(context);
 
-        const contentType = resp.headers.get('content-type') || '';
-        let data = null;
-        if (!resp.ok) {
-          const bodyText = await resp.text().catch(() => 'Unable to read response body');
-          console.error('Teams->chat proxy returned error', { status: resp.status, statusText: resp.statusText, bodyText });
-          throw new Error(`Chat proxy returned ${resp.status}`);
-        }
+const teamsConversationKey =
+  context.activity.conversation?.id ||
+  context.activity.from?.id ||
+  `teams-${Date.now()}`;
 
-        if (contentType.includes('application/json')) {
-          data = await resp.json();
-        } else {
-          const bodyText = await resp.text().catch(() => 'Unable to read non-JSON response body');
-          console.error('Teams->chat proxy returned non-JSON response', { contentType, bodyText });
-          throw new Error('Invalid chat proxy response');
-        }
+// Message d'accueil seulement au début si l'utilisateur dit juste bonjour
+if (getTeamsConversationHistory(teamsConversationKey).length === 0 && isGreetingOnly(text)) {
+  const welcomeText = 'Bonjour ! Je suis l’assistant IT KFC France. Décrivez-moi votre problème informatique : caisse, TPE, imprimante, réseau, Wi-Fi, authentification…';
+  saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
+  await context.sendActivity(appendTechnicienPromptOnce(welcomeText));
+  await next();
+  return;
+}
 
-        const reply = data?.choices?.[0]?.message?.content || data?.error || 'No response from assistant';
-        const replyText = data?.sharepoint_used
-          ? `${reply}\n\n✅ Source SharePoint utilisée pour cette réponse.`
-          : reply;
-        await context.sendActivity(replyText);
-      } catch (e) {
-        console.error('Teams->chat proxy error:', e);
-        await context.sendActivity('Sorry, an error occurred while processing your message.');
+// Création ticket Teams : l'utilisateur écrit "technicien"
+if (isCreateTicketRequest(text)) {
+  try {
+    const history = getTeamsConversationHistory(teamsConversationKey);
+    const searchableText = history.map(t => `${t.user}\n${t.assistant}`).join('\n');
+    const classification = classifyTeamsTicket(searchableText || text);
+
+    const ticketBody = {
+      name: userName,
+      email: userEmail,
+      room: 'Teams',
+      category: classification.category,
+      priority: classification.priority,
+      serviceLot: classification.serviceLot,
+      sessionId: teamsConversationKey,
+      text: buildTeamsTicketDescription(history, text, userName, userEmail)
+    };
+
+    const ticketData = await createAteraTicket(ticketBody);
+    const ticketId = getAteraTicketId(ticketData);
+
+    const ticketReply = ticketId
+      ? `Votre ticket Atera a été créé avec succès. Numéro : ${ticketId}`
+      : 'Votre ticket Atera a été créé avec succès.';
+
+    saveTeamsConversationTurn(teamsConversationKey, text, ticketReply);
+    await context.sendActivity(ticketReply);
+  } catch (ticketError) {
+    console.error('Teams ticket creation failed:', ticketError);
+    await context.sendActivity(`Je n’ai pas pu créer le ticket Atera : ${ticketError.message || ticketError}`);
+  }
+
+  await next();
+  return;
+}
+
+// Forward user message to existing chat proxy
+try {
+  const proxyUrl = process.env.CHAT_PROXY_URL || `http://127.0.0.1:${PORT}/api/chat`;
+  const resp = await fetch(proxyUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: text }
+      ],
+      sessionId: teamsConversationKey,
+      guestInfo: {
+        name: userName,
+        email: userEmail
       }
+    })
+  });
+
+  const contentType = resp.headers.get('content-type') || '';
+  let data = null;
+
+  if (!resp.ok) {
+    const bodyText = await resp.text().catch(() => 'Unable to read response body');
+    console.error('Teams->chat proxy returned error', {
+      status: resp.status,
+      statusText: resp.statusText,
+      bodyText
+    });
+    throw new Error(`Chat proxy returned ${resp.status}`);
+  }
+
+  if (contentType.includes('application/json')) {
+    data = await resp.json();
+  } else {
+    const bodyText = await resp.text().catch(() => 'Unable to read non-JSON response body');
+    console.error('Teams->chat proxy returned non-JSON response', {
+      contentType,
+      bodyText
+    });
+    throw new Error('Invalid chat proxy response');
+  }
+
+  const reply = data?.choices?.[0]?.message?.content || data?.error || 'No response from assistant';
+  const cleanedReply = String(reply || '').trim();
+
+  let replyText = data?.sharepoint_used
+    ? `${cleanedReply}\n\n✅ Source SharePoint utilisée pour cette réponse.`
+    : cleanedReply;
+
+  replyText = appendTechnicienPromptOnce(replyText);
+
+  saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+  await context.sendActivity(replyText);
+} catch (e) {
+  console.error('Teams->chat proxy error:', e);
+  await context.sendActivity('Sorry, an error occurred while processing your message.');
+}
       await next();
     });
     console.log('Teams integration enabled (botbuilder present)');
@@ -587,7 +803,110 @@ function decodeJwtPayload(token) {
     return null;
   }
 }
+async function createAteraTicket(body) {
+  if (!process.env.ATERA_API_KEY || !process.env.ATERA_API_URL) {
+    throw new Error('Missing ATERA_API_KEY or ATERA_API_URL on server');
+  }
 
+  const baseUrl = String(process.env.ATERA_API_URL || '').trim();
+
+  const ateraUrl = baseUrl.toLowerCase().includes('/api/v3/tickets')
+    ? baseUrl
+    : new URL('/api/v3/tickets', baseUrl).toString();
+
+  const problemLabel = body.category || 'problème';
+  const subjectName = body.name || 'demandeur inconnu';
+  const subjectRoom = body.room || 'Restaurant inconnu';
+  const ateraSubject = `${subjectRoom} - ${problemLabel} - ${subjectName}`;
+
+  const descriptionLines = [
+    `Nom: ${body.name || 'Unknown'}`,
+    `Restaurant: ${body.room || 'Unknown'}`,
+    `Email: ${body.email || 'Unknown'}`,
+    `Catégorie: ${body.category || 'problème'}`,
+    `Priorité: ${body.priority || 'P3'}`,
+    `Service Lot: ${body.serviceLot || 'Lot 1 - Helpdesk / Service Desk'}`,
+    `Session ID: ${body.sessionId || 'N/A'}`,
+    '',
+    `${body.text || 'No additional details provided'}`
+  ];
+
+  const priorityMap = {
+    P1: 'Critical',
+    P2: 'High',
+    P3: 'Medium',
+    P4: 'Low'
+  };
+
+  const ateraPayload = {
+    TicketTitle: ateraSubject,
+    Description: descriptionLines.join('\n'),
+    TicketPriority: priorityMap[body.priority] || 'Medium'
+  };
+
+  if (body.email) {
+    ateraPayload.EndUserEmail = body.email;
+
+    const nameParts = String(body.name || 'Guest')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    ateraPayload.EndUserFirstName = nameParts[0] || 'Guest';
+    ateraPayload.EndUserLastName = nameParts.slice(1).join(' ') || 'User';
+  }
+
+  console.log('[Atera] Forwarding request to:', ateraUrl);
+  console.log('[Atera] Forwarding payload:', ateraPayload);
+
+  const aRes = await fetch(ateraUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-API-KEY': process.env.ATERA_API_KEY
+    },
+    body: JSON.stringify(ateraPayload)
+  });
+
+  const text = await aRes.text();
+
+  let aData;
+  try {
+    aData = JSON.parse(text);
+  } catch (err) {
+    console.warn('[Atera] Failed to parse response as JSON:', text);
+    aData = {
+      text,
+      rawText: text
+    };
+  }
+
+  console.log('[Atera] Response status:', aRes.status);
+  console.log('[Atera] Response body:', aData);
+
+  try {
+    const store = readJsonSafe(REQUESTS_FILE);
+    store.push({
+      id: `ATERA-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      ticket: getAteraTicketId(aData),
+      payload: body
+    });
+    writeJsonSafe(REQUESTS_FILE, store);
+  } catch (e) {
+    console.warn('Failed to persist Atera request locally', e);
+  }
+
+  if (!aRes.ok) {
+    const err = new Error(aData?.error || aData?.message || aData?.text || 'Unknown Atera error');
+    err.status = aRes.status;
+    err.details = aData;
+    throw err;
+  }
+
+  return aData;
+}
 async function handleApi(req, res) {
   try {
     
@@ -801,76 +1120,25 @@ async function handleApi(req, res) {
     }
 
     // Atera ticket proxy
-    if (req.method === 'POST' && req.url === '/api/atera') {
-      try {
-        if (!process.env.ATERA_API_KEY || !process.env.ATERA_API_URL) return sendJsonResponse(res, 500, { error: 'Missing ATERA_API_KEY or ATERA_API_URL on server' });
-        const body = await readJson(req);
-        console.log('[Atera] Incoming request payload:', body);
-        const ateraUrl = process.env.ATERA_API_URL.toLowerCase().includes('/api/v3/tickets') ? process.env.ATERA_API_URL : new URL('/api/v3/tickets', process.env.ATERA_API_URL).toString();
-        console.log('[Atera] Forwarding request to:', ateraUrl);
-        const problemLabel = body.category ? body.category : 'problÃ¨me';
-        const subjectName = body.name || 'demandeur inconnu';
-        const subjectRoom = body.room || 'Restaurant inconnu';
-        const ateraSubject = `${subjectRoom} - ${problemLabel} - ${subjectName}`;
-        const descriptionLines = [
-          `Nom: ${body.name || 'Unknown'}`,
-          `Restaurant: ${body.room || 'Unknown'}`,
-          `Email: ${body.email || 'Unknown'}`,
-          `CatÃ©gorie: ${body.category || 'problÃ¨me'}`,
-          `PrioritÃ©: ${body.priority || 'P3'}`,
-          `Service Lot: ${body.serviceLot || 'Lot 1 - Helpdesk / Service Desk'}`,
-          `Session ID: ${body.sessionId || 'N/A'}`,
-          '',
-          `${body.text || 'No additional details provided'}`
-        ];
-        
-        const priorityMap = { P1: 'Critical', P2: 'High', P3: 'Medium', P4: 'Low' };
-        const ateraPriority = priorityMap[body.priority] || 'Medium';
-        
-        const ateraPayload = {
-          TicketTitle: ateraSubject,
-          Description: descriptionLines.join('\n'),
-          TicketPriority: ateraPriority
-        };
-        
-        if (body.email) {
-          ateraPayload.EndUserEmail = body.email;
-          const nameParts = (body.name || 'Guest').split(' ');
-          ateraPayload.EndUserFirstName = nameParts[0] || 'Guest';
-          ateraPayload.EndUserLastName = nameParts.slice(1).join(' ') || 'User';
-        }
-        console.log('[Atera] Forwarding payload:', ateraPayload);
-        const aRes = await fetch(ateraUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-API-KEY': process.env.ATERA_API_KEY },
-          body: JSON.stringify(ateraPayload)
-        });
-        const text = await aRes.text();
-        let aData;
-        try {
-          aData = JSON.parse(text);
-        } catch (err) {
-          console.warn('[Atera] Failed to parse response as JSON:', text);
-          aData = { text, rawText: text };
-        }
-        console.log('[Atera] Response status:', aRes.status);
-        console.log('[Atera] Response body:', aData);
-        try {
-          const store = readJsonSafe(REQUESTS_FILE);
-          store.push({ id: `ATERA-${Date.now()}`, timestamp: new Date().toISOString(), ticket: aData?.id || aData?.ticketId || null, payload: body });
-          writeJsonSafe(REQUESTS_FILE, store);
-        } catch (e) {
-          console.warn('Failed to persist Atera request locally', e);
-        }
-        if (!aRes.ok) {
-          return sendJsonResponse(res, aRes.status, { error: aData?.error || aData?.message || aData?.text || 'Unknown Atera error', details: aData });
-        }
-        return res.writeHead(200, { 'Content-Type': 'application/json' }), res.end(JSON.stringify(aData));
-      } catch (err) {
-        console.error('[Atera] Exception:', err);
-        return sendJsonResponse(res, 500, { error: 'Atera proxy error', message: err.message });
-      }
-    }
+    // Atera ticket proxy
+if (req.method === 'POST' && req.url === '/api/atera') {
+  try {
+    const body = await readJson(req);
+    console.log('[Atera] Incoming request payload:', body);
+
+    const aData = await createAteraTicket(body);
+
+    return sendJsonResponse(res, 200, aData);
+  } catch (err) {
+    console.error('[Atera] Exception:', err);
+
+    return sendJsonResponse(res, err.status || 500, {
+      error: 'Atera proxy error',
+      message: err.message,
+      details: err.details || null
+    });
+  }
+}
 
     // Image upload endpoint removed (Jimp no longer used)
     if (req.method === 'POST' && req.url === '/api/upload-image') {
