@@ -280,15 +280,26 @@ const teamsConversationKey =
 // Message d'accueil seulement au début si l'utilisateur dit juste bonjour
 // Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
-const welcomeText = [
-  `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)`,
-  `Voici ce que je peux faire pour vous :`,
-  `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.`,
-  `Pour commencer, dites-moi ce qui ne va pas 👇`
-].join('\n\n\u200B\n\n');
+  const welcomeParts = [
+    `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)`,
+
+    `Voici ce que je peux faire pour vous :`,
+
+    `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.`,
+
+    `Pour commencer, dites-moi ce qui ne va pas 👇`,
+
+    `🎫 Pour créer un ticket, écrivez « ticket ».`
+  ];
+
+  const welcomeText = welcomeParts.join('\n\n');
 
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
-  await context.sendActivity(appendTechnicienPromptOnce(welcomeText));
+
+  for (const part of welcomeParts) {
+    await context.sendActivity(part);
+  }
+
   await next();
   return;
 }
