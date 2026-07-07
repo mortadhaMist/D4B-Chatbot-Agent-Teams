@@ -405,8 +405,8 @@ if (normalizeTextForIntent(text).includes('resultat diagnostic')) {
     } else if (resultData.job.status !== 'completed') {
       await context.sendActivity(`Le diagnostic est encore en cours. Statut : ${resultData.job.status}`);
     } else {
-      const shortResult = JSON.stringify(resultData.job.result, null, 2).slice(0, 3500);
-      await context.sendActivity(`Résultat du diagnostic :\n\n${shortResult}`);
+const formattedResult = formatDiagnosticResultForTeams(resultData.job.result);
+await context.sendActivity(formattedResult);
     }
   } catch (err) {
     await context.sendActivity(`Impossible de lire le résultat du diagnostic : ${err.message || err}`);
@@ -563,7 +563,130 @@ headers: {
 return response.data.access_token;
 }
 
+function extractLine(text, patterns) {
+  const lines = String(text || '').split(/\r?\n/);
 
+  for (const pattern of patterns) {
+    const found = lines.find(line =>
+      normalizeTextForIntent(line).includes(normalizeTextForIntent(pattern))
+    );
+
+    if (found) {
+      return found.replace(/\s+/g, ' ').trim();
+    }
+  }
+
+  return null;
+}
+
+function commandResult(result, commandStartsWith) {
+  return (result?.results || []).find(r =>
+    String(r.command || '').toLowerCase().startsWith(commandStartsWith.toLowerCase())
+  );
+}
+
+function isPingOk(stdout) {
+  const text = normalizeTextForIntent(stdout);
+
+  return (
+    text.includes('perdus = 0') ||
+    text.includes('lost = 0') ||
+    text.includes('0% loss') ||
+    text.includes('0% de perte')
+  );
+}
+
+function isNslookupOk(stdout) {
+  const text = normalizeTextForIntent(stdout);
+
+  return (
+    text.includes('name:') ||
+    text.includes('nom:') ||
+    text.includes('addresses:') ||
+    text.includes('adresses:')
+  );
+}
+
+function cleanIpconfigValue(line) {
+  if (!line) return 'Non détecté';
+
+  const parts = String(line).split(':');
+  return parts.length > 1 ? parts.slice(1).join(':').trim() : line.trim();
+}
+
+function formatDiagnosticResultForTeams(result) {
+  if (!result) {
+    return 'Aucun résultat de diagnostic disponible.';
+  }
+
+  const ipconfig = commandResult(result, 'ipconfig');
+  const pingGoogleDns = commandResult(result, 'ping 8.8.8.8');
+  const pingGoogle = commandResult(result, 'ping google.com');
+  const nslookup = commandResult(result, 'nslookup');
+
+  const ipText = ipconfig?.stdout || '';
+
+  const hostname = result.hostname || 'Non détecté';
+  const username = result.username || 'Non détecté';
+
+  const ipv4Line = extractLine(ipText, ['Adresse IPv4', 'IPv4 Address']);
+  const gatewayLine = extractLine(ipText, ['Passerelle par défaut', 'Default Gateway']);
+  const dhcpLine = extractLine(ipText, ['Serveur DHCP', 'DHCP Server']);
+  const dnsLine = extractLine(ipText, ['Serveurs DNS', 'DNS Servers']);
+  const adapterLine = extractLine(ipText, ['Description']);
+
+  const wifiDisconnected =
+    normalizeTextForIntent(ipText).includes('carte reseau sans fil wi-fi') &&
+    normalizeTextForIntent(ipText).includes('media deconnecte');
+
+  const ethernetConnected = !!ipv4Line && !!gatewayLine;
+
+  const pingDnsOk = pingGoogleDns ? isPingOk(pingGoogleDns.stdout) : false;
+  const pingGoogleOk = pingGoogle ? isPingOk(pingGoogle.stdout) : false;
+  const dnsOk = nslookup ? isNslookupOk(nslookup.stdout) : false;
+
+  const conclusion = [];
+
+  if (ethernetConnected) {
+    conclusion.push('Le PC a une connexion réseau active avec une adresse IP et une passerelle.');
+  } else {
+    conclusion.push('Le PC ne semble pas avoir de connexion réseau active complète.');
+  }
+
+  if (pingDnsOk && pingGoogleOk && dnsOk) {
+    conclusion.push('Internet et la résolution DNS semblent fonctionner.');
+  } else if (pingDnsOk && !dnsOk) {
+    conclusion.push('Internet répond, mais il peut y avoir un problème DNS.');
+  } else if (!pingDnsOk) {
+    conclusion.push('Le test vers 8.8.8.8 ne répond pas : problème possible de connexion Internet ou passerelle.');
+  }
+
+  return [
+    `✅ Diagnostic terminé`,
+    ``,
+    `💻 PC`,
+    `- Nom du poste : ${hostname}`,
+    `- Utilisateur : ${username}`,
+    `- Type : ${result.type || 'Non défini'}`,
+    ``,
+    `🌐 Réseau`,
+    `- Carte détectée : ${cleanIpconfigValue(adapterLine)}`,
+    `- Adresse IPv4 : ${cleanIpconfigValue(ipv4Line)}`,
+    `- Passerelle : ${cleanIpconfigValue(gatewayLine)}`,
+    `- DHCP : ${cleanIpconfigValue(dhcpLine)}`,
+    `- DNS : ${cleanIpconfigValue(dnsLine)}`,
+    `- Ethernet : ${ethernetConnected ? 'Connecté' : 'Non confirmé'}`,
+    `- Wi-Fi : ${wifiDisconnected ? 'Déconnecté' : 'Non confirmé'}`,
+    ``,
+    `📡 Tests`,
+    `- Ping 8.8.8.8 : ${pingDnsOk ? 'OK' : 'KO ou non disponible'}`,
+    `- Ping google.com : ${pingGoogleOk ? 'OK' : 'KO ou non disponible'}`,
+    `- Résolution DNS : ${dnsOk ? 'OK' : 'KO ou non disponible'}`,
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n');
+}
 //Récupérer l’ID du site SharePoint
 
 async function getSharePointSiteId() {
