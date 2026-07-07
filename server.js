@@ -280,7 +280,7 @@ const teamsConversationKey =
 // Message d'accueil seulement au début si l'utilisateur dit juste bonjour
 if (getTeamsConversationHistory(teamsConversationKey).length === 0 && isGreetingOnly(text)) {
   const welcomeText = 'Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)\n\n '+ 
-`Voici ce que je peux faire pour vous :\n\n`+ `\n\n`+
+`Voici ce que je peux faire pour vous :\n\n`+ 
 `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.\n\n`+
 `Pour commencer, dites-moi ce qui ne va pas 👇`;
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
