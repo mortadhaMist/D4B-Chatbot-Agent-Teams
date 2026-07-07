@@ -137,7 +137,7 @@ function buildTeamsTicketDescription(history, triggerText, userName, userEmail) 
     'Résumé / conversation:',
     conversationLines.length ? conversationLines.join('\n') : 'Aucun détail avant la demande de création du ticket.',
     '',
-    `Déclencheur utilisateur: ${triggerText || 'technicien'}`
+    `Déclencheur utilisateur: ${triggerText || 'ticket'}`
   ].join('\n');
 }
 
@@ -153,9 +153,9 @@ function getAteraTicketId(data) {
 }
 
 function appendTechnicienPromptOnce(replyText) {
-  const prompt = '🎫 Pour créer un ticket, écrivez « technicien ».';
+  const prompt = '🎫 Pour créer un ticket, écrivez « ticket ».';
   const cleaned = String(replyText || '')
-    .replace(/🎫\s*Pour créer un ticket, écrivez « technicien »\.?/gi, '')
+    .replace(/🎫\s*Pour créer un ticket, écrivez « ticket »\.?/gi, '')
     .trim();
 
   return `${cleaned}\n\n${prompt}`;
@@ -280,11 +280,11 @@ const teamsConversationKey =
 // Message d'accueil seulement au début si l'utilisateur dit juste bonjour
 // Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
-  const welcomeText =
-    `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)\n\n` +
-    `Voici ce que je peux faire pour vous :\n\n` +
-    `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.\n\n` +
-    `Pour commencer, dites-moi ce qui ne va pas 👇`;
+const welcomeText =
+  `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)\n\n\n` +
+  `Voici ce que je peux faire pour vous :\n\n\n` +
+  `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.\n\n\n` +
+  `Pour commencer, dites-moi ce qui ne va pas 👇`;
 
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
   await context.sendActivity(appendTechnicienPromptOnce(welcomeText));
