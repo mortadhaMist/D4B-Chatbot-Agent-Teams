@@ -668,78 +668,387 @@ function cleanIpconfigValue(line) {
   return parts.length > 1 ? parts.slice(1).join(':').trim() : line.trim();
 }
 
+function findCommand(result, search) {
+  return (result?.results || []).find(r =>
+    String(r.command || '').toLowerCase().includes(String(search || '').toLowerCase())
+  );
+}
+
+function cleanDiagnosticText(text, max = 1200) {
+  const cleaned = String(text || '')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (!cleaned) return 'Non disponible';
+  return cleaned.length > max ? cleaned.slice(0, max) + '\n...' : cleaned;
+}
+
+function firstMatchingLine(text, keywords) {
+  const normalizedKeywords = keywords.map(k => normalizeTextForIntent(k));
+  const lines = String(text || '').split(/\r?\n/);
+
+  return lines.find(line => {
+    const normalizedLine = normalizeTextForIntent(line);
+    return normalizedKeywords.some(k => normalizedLine.includes(k));
+  }) || null;
+}
+
+function commandOk(item) {
+  if (!item) return false;
+  if (item.error) return false;
+  if (String(item.stderr || '').trim()) return false;
+  return true;
+}
+
+function commandStatusIcon(item) {
+  if (!item) return '⚪ Non disponible';
+  if (item.error) return '🔴 Erreur';
+  if (String(item.stderr || '').trim()) return '🟠 Avertissement';
+  return '🟢 OK';
+}
+
+function extractAfterColon(line) {
+  if (!line) return 'Non détecté';
+  const parts = String(line).split(':');
+  return parts.length > 1 ? parts.slice(1).join(':').trim() : String(line).trim();
+}
+
+function formatDiagnosticHeader(result, title) {
+  return [
+    `✅ ${title}`,
+    ``,
+    `💻 Poste`,
+    `- Nom du poste : ${result.hostname || 'Non détecté'}`,
+    `- Utilisateur : ${result.username || 'Non détecté'}`,
+    `- Type : ${result.type || 'Non défini'}`,
+    `- Date : ${result.completedAt || 'Non disponible'}`
+  ].join('\n');
+}
+
+function formatNetworkBasicResult(result) {
+  const ipconfig = findCommand(result, 'ipconfig');
+  const pingDns = findCommand(result, 'ping 8.8.8.8');
+  const pingGoogle = findCommand(result, 'ping google.com');
+  const nslookup = findCommand(result, 'nslookup');
+
+  const ipText = ipconfig?.stdout || '';
+
+  const ipv4Line = firstMatchingLine(ipText, ['Adresse IPv4', 'IPv4 Address']);
+  const gatewayLine = firstMatchingLine(ipText, ['Passerelle par défaut', 'Default Gateway']);
+  const dhcpLine = firstMatchingLine(ipText, ['Serveur DHCP', 'DHCP Server']);
+  const dnsLine = firstMatchingLine(ipText, ['Serveurs DNS', 'DNS Servers']);
+  const adapterLine = firstMatchingLine(ipText, ['Description']);
+
+  const pingDnsOk = pingDns ? isPingOk(pingDns.stdout) : false;
+  const pingGoogleOk = pingGoogle ? isPingOk(pingGoogle.stdout) : false;
+  const dnsOk = nslookup ? isNslookupOk(nslookup.stdout) : false;
+
+  const hasIp = !!ipv4Line;
+  const hasGateway = !!gatewayLine;
+
+  const conclusion = [];
+
+  if (hasIp && hasGateway) {
+    conclusion.push('Le poste possède une adresse IP et une passerelle.');
+  } else {
+    conclusion.push('Adresse IP ou passerelle non détectée : vérifier la connexion réseau.');
+  }
+
+  if (pingDnsOk && pingGoogleOk && dnsOk) {
+    conclusion.push('Connexion Internet et résolution DNS fonctionnelles.');
+  } else if (pingDnsOk && !dnsOk) {
+    conclusion.push('Internet répond, mais la résolution DNS semble problématique.');
+  } else if (!pingDnsOk) {
+    conclusion.push('Le poste ne répond pas correctement au test Internet vers 8.8.8.8.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic réseau terminé'),
+    ``,
+    `🌐 Configuration réseau`,
+    `- Carte détectée : ${extractAfterColon(adapterLine)}`,
+    `- Adresse IPv4 : ${extractAfterColon(ipv4Line)}`,
+    `- Passerelle : ${extractAfterColon(gatewayLine)}`,
+    `- DHCP : ${extractAfterColon(dhcpLine)}`,
+    `- DNS : ${extractAfterColon(dnsLine)}`,
+    ``,
+    `📡 Tests de connectivité`,
+    `- Ping 8.8.8.8 : ${pingDnsOk ? '🟢 OK' : '🔴 KO ou non disponible'}`,
+    `- Ping google.com : ${pingGoogleOk ? '🟢 OK' : '🔴 KO ou non disponible'}`,
+    `- Résolution DNS : ${dnsOk ? '🟢 OK' : '🔴 KO ou non disponible'}`,
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n');
+}
+
+function formatNetworkAdvancedResult(result) {
+  const testNet = findCommand(result, 'Test-NetConnection');
+  const ipAddress = findCommand(result, 'Get-NetIPAddress');
+  const routes = findCommand(result, 'Get-NetRoute');
+  const adapters = findCommand(result, 'Get-NetAdapter');
+
+  const testText = testNet?.stdout || '';
+  const testNormalized = normalizeTextForIntent(testText);
+
+  const connectivityOk =
+    testNormalized.includes('pingsucceeded') ||
+    testNormalized.includes('tcptestsucceeded') ||
+    testNormalized.includes('true');
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic réseau avancé terminé'),
+    ``,
+    `🧪 Connectivité avancée`,
+    `- Test-NetConnection : ${commandStatusIcon(testNet)}`,
+    `- Résultat : ${connectivityOk ? '🟢 Connectivité détectée' : '🟠 À vérifier'}`,
+    ``,
+    `🌐 Adresses IP`,
+    cleanDiagnosticText(ipAddress?.stdout || ipAddress?.stderr || ipAddress?.error, 1200),
+    ``,
+    `🛣️ Route par défaut`,
+    cleanDiagnosticText(routes?.stdout || routes?.stderr || routes?.error, 1200),
+    ``,
+    `🔌 Cartes réseau actives`,
+    cleanDiagnosticText(adapters?.stdout || adapters?.stderr || adapters?.error, 1200),
+    ``,
+    `🧾 Conclusion`,
+    connectivityOk
+      ? '- Le réseau avancé semble opérationnel. Vérifier les routes et cartes actives si le problème persiste.'
+      : '- La connectivité avancée n’est pas confirmée. Vérifier passerelle, câble/Wi-Fi, VLAN ou filtrage réseau.'
+  ].join('\n').slice(0, 7000);
+}
+
+function formatPrinterBasicResult(result) {
+  const printers = findCommand(result, 'Get-Printer');
+  const spooler = findCommand(result, 'Get-Service Spooler');
+
+  const spoolerText = normalizeTextForIntent(spooler?.stdout || '');
+  const spoolerRunning =
+    spoolerText.includes('running') ||
+    spoolerText.includes('en cours');
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic imprimante terminé'),
+    ``,
+    `🖨️ Imprimantes détectées`,
+    cleanDiagnosticText(printers?.stdout || printers?.stderr || printers?.error, 1800),
+    ``,
+    `⚙️ Spouleur d’impression`,
+    `- Statut commande : ${commandStatusIcon(spooler)}`,
+    `- Spouleur : ${spoolerRunning ? '🟢 En cours' : '🔴 À vérifier'}`,
+    ``,
+    cleanDiagnosticText(spooler?.stdout || spooler?.stderr || spooler?.error, 800),
+    ``,
+    `🧾 Conclusion`,
+    spoolerRunning
+      ? '- Le spouleur d’impression semble actif. Vérifier ensuite l’imprimante par défaut, le pilote et la file d’attente.'
+      : '- Le spouleur d’impression semble arrêté ou non lisible. Redémarrer le service Spouleur d’impression.'
+  ].join('\n').slice(0, 7000);
+}
+
+function formatSystemBasicResult(result) {
+  const hostname = findCommand(result, 'hostname');
+  const whoami = findCommand(result, 'whoami');
+  const systeminfo = findCommand(result, 'systeminfo');
+
+  const sysText = systeminfo?.stdout || '';
+
+  const osLine = firstMatchingLine(sysText, ['Nom du système d’exploitation', 'OS Name']);
+  const versionLine = firstMatchingLine(sysText, ['Version du système', 'OS Version']);
+  const manufacturerLine = firstMatchingLine(sysText, ['Fabricant du système', 'System Manufacturer']);
+  const modelLine = firstMatchingLine(sysText, ['Modèle du système', 'System Model']);
+  const bootLine = firstMatchingLine(sysText, ['Heure de démarrage du système', 'System Boot Time']);
+  const memoryLine = firstMatchingLine(sysText, ['Mémoire physique totale', 'Total Physical Memory']);
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic système terminé'),
+    ``,
+    `🖥️ Identité`,
+    `- Hostname : ${cleanDiagnosticText(hostname?.stdout, 200)}`,
+    `- Session : ${cleanDiagnosticText(whoami?.stdout, 200)}`,
+    ``,
+    `🧩 Informations système`,
+    `- OS : ${extractAfterColon(osLine)}`,
+    `- Version : ${extractAfterColon(versionLine)}`,
+    `- Fabricant : ${extractAfterColon(manufacturerLine)}`,
+    `- Modèle : ${extractAfterColon(modelLine)}`,
+    `- Dernier démarrage : ${extractAfterColon(bootLine)}`,
+    `- Mémoire : ${extractAfterColon(memoryLine)}`,
+    ``,
+    `🧾 Conclusion`,
+    '- Informations système récupérées. Utiliser ces données pour identifier le poste ou préparer une escalade technique.'
+  ].join('\n').slice(0, 7000);
+}
+
+function formatSystemHealthResult(result) {
+  const computerInfo = findCommand(result, 'Get-ComputerInfo');
+  const events = findCommand(result, 'Get-WinEvent');
+  const processes = findCommand(result, 'Get-Process');
+  const services = findCommand(result, 'Get-Service');
+
+  const eventsHasErrors = !!String(events?.stdout || '').trim();
+  const stoppedServices = !!String(services?.stdout || '').trim();
+
+  const conclusion = [];
+
+  if (eventsHasErrors) {
+    conclusion.push('Des erreurs système récentes sont présentes dans les journaux Windows.');
+  } else {
+    conclusion.push('Aucune erreur système critique visible dans la sortie récupérée.');
+  }
+
+  if (stoppedServices) {
+    conclusion.push('Certains services automatiques semblent arrêtés : à vérifier.');
+  } else {
+    conclusion.push('Aucun service automatique arrêté visible dans la sortie récupérée.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic santé système terminé'),
+    ``,
+    `🖥️ Informations machine`,
+    cleanDiagnosticText(computerInfo?.stdout || computerInfo?.stderr || computerInfo?.error, 1200),
+    ``,
+    `🚨 Dernières erreurs système`,
+    cleanDiagnosticText(events?.stdout || events?.stderr || events?.error, 1800),
+    ``,
+    `⚙️ Processus les plus consommateurs CPU`,
+    cleanDiagnosticText(processes?.stdout || processes?.stderr || processes?.error, 1200),
+    ``,
+    `🧰 Services automatiques arrêtés`,
+    cleanDiagnosticText(services?.stdout || services?.stderr || services?.error, 1200),
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
+
+function formatStorageManagementResult(result) {
+  const volumes = findCommand(result, 'Get-Volume');
+  const disks = findCommand(result, 'Get-PhysicalDisk');
+  const repair = findCommand(result, 'Repair-Volume');
+
+  const repairOk = commandOk(repair);
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic stockage terminé'),
+    ``,
+    `💽 Volumes`,
+    cleanDiagnosticText(volumes?.stdout || volumes?.stderr || volumes?.error, 1600),
+    ``,
+    `🧱 Disques physiques`,
+    cleanDiagnosticText(disks?.stdout || disks?.stderr || disks?.error, 1600),
+    ``,
+    `🛠️ Scan du volume C:`,
+    `- Statut : ${commandStatusIcon(repair)}`,
+    cleanDiagnosticText(repair?.stdout || repair?.stderr || repair?.error, 1000),
+    ``,
+    `🧾 Conclusion`,
+    repairOk
+      ? '- Le scan stockage a été exécuté. Vérifier les colonnes HealthStatus et OperationalStatus pour confirmer l’état disque.'
+      : '- Le scan stockage a retourné une erreur ou nécessite les droits administrateur. Relancer l’agent en administrateur si nécessaire.'
+  ].join('\n').slice(0, 7000);
+}
+
+function formatSecurityAuditResult(result) {
+  const users = findCommand(result, 'Get-LocalUser');
+  const tasks = findCommand(result, 'Get-ScheduledTask');
+  const firewall = findCommand(result, 'Get-NetFirewallRule');
+
+  return [
+    formatDiagnosticHeader(result, 'Audit sécurité terminé'),
+    ``,
+    `👤 Utilisateurs locaux activés`,
+    cleanDiagnosticText(users?.stdout || users?.stderr || users?.error, 1400),
+    ``,
+    `📅 Tâches planifiées actives`,
+    cleanDiagnosticText(tasks?.stdout || tasks?.stderr || tasks?.error, 1800),
+    ``,
+    `🧱 Règles pare-feu activées`,
+    cleanDiagnosticText(firewall?.stdout || firewall?.stderr || firewall?.error, 1800),
+    ``,
+    `🧾 Conclusion`,
+    `- Audit sécurité récupéré.`,
+    `- Vérifier les comptes locaux inconnus, les tâches planifiées suspectes et les règles pare-feu inhabituelles.`,
+    `- Ce diagnostic peut contenir des informations sensibles : à partager uniquement avec un technicien autorisé.`
+  ].join('\n').slice(0, 7000);
+}
+
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
   }
 
-  const ipconfig = commandResult(result, 'ipconfig');
-  const pingGoogleDns = commandResult(result, 'ping 8.8.8.8');
-  const pingGoogle = commandResult(result, 'ping google.com');
-  const nslookup = commandResult(result, 'nslookup');
+  switch (result.type) {
+    case 'network_basic':
+      return formatNetworkBasicResult(result);
 
-  const ipText = ipconfig?.stdout || '';
+    case 'network_advanced':
+      return formatNetworkAdvancedResult(result);
 
-  const hostname = result.hostname || 'Non détecté';
-  const username = result.username || 'Non détecté';
+    case 'printer_basic':
+      return formatPrinterBasicResult(result);
 
-  const ipv4Line = extractLine(ipText, ['Adresse IPv4', 'IPv4 Address']);
-  const gatewayLine = extractLine(ipText, ['Passerelle par défaut', 'Default Gateway']);
-  const dhcpLine = extractLine(ipText, ['Serveur DHCP', 'DHCP Server']);
-  const dnsLine = extractLine(ipText, ['Serveurs DNS', 'DNS Servers']);
-  const adapterLine = extractLine(ipText, ['Description']);
+    case 'system_basic':
+      return formatSystemBasicResult(result);
 
-  const wifiDisconnected =
-    normalizeTextForIntent(ipText).includes('carte reseau sans fil wi-fi') &&
-    normalizeTextForIntent(ipText).includes('media deconnecte');
+    case 'system_health':
+      return formatSystemHealthResult(result);
 
-  const ethernetConnected = !!ipv4Line && !!gatewayLine;
+    case 'storage_management':
+      return formatStorageManagementResult(result);
 
-  const pingDnsOk = pingGoogleDns ? isPingOk(pingGoogleDns.stdout) : false;
-  const pingGoogleOk = pingGoogle ? isPingOk(pingGoogle.stdout) : false;
-  const dnsOk = nslookup ? isNslookupOk(nslookup.stdout) : false;
+    case 'security_audit':
+      return formatSecurityAuditResult(result);
 
-  const conclusion = [];
-
-  if (ethernetConnected) {
-    conclusion.push('Le PC a une connexion réseau active avec une adresse IP et une passerelle.');
-  } else {
-    conclusion.push('Le PC ne semble pas avoir de connexion réseau active complète.');
+    default:
+      return [
+        formatDiagnosticHeader(result, 'Diagnostic terminé'),
+        ``,
+        `📋 Résultats`,
+        ...(result.results || []).map(item => {
+          return [
+            `Commande : ${item.command}`,
+            `Statut : ${commandStatusIcon(item)}`,
+            cleanDiagnosticText(item.stdout || item.stderr || item.error, 1000)
+          ].join('\n');
+        })
+      ].join('\n\n').slice(0, 7000);
+  }
+}
+function formatDiagnosticResultForTeams(result) {
+  if (!result) {
+    return 'Aucun résultat de diagnostic disponible.';
   }
 
-  if (pingDnsOk && pingGoogleOk && dnsOk) {
-    conclusion.push('Internet et la résolution DNS semblent fonctionner.');
-  } else if (pingDnsOk && !dnsOk) {
-    conclusion.push('Internet répond, mais il peut y avoir un problème DNS.');
-  } else if (!pingDnsOk) {
-    conclusion.push('Le test vers 8.8.8.8 ne répond pas : problème possible de connexion Internet ou passerelle.');
-  }
+  switch (result.type) {
+    case 'network_basic':
+      return formatNetworkBasicResult(result);
 
-  return [
-    `✅ Diagnostic terminé`,
-    ``,
-    `💻 PC`,
-    `- Nom du poste : ${hostname}`,
-    `- Utilisateur : ${username}`,
-    `- Type : ${result.type || 'Non défini'}`,
-    ``,
-    `🌐 Réseau`,
-    `- Carte détectée : ${cleanIpconfigValue(adapterLine)}`,
-    `- Adresse IPv4 : ${cleanIpconfigValue(ipv4Line)}`,
-    `- Passerelle : ${cleanIpconfigValue(gatewayLine)}`,
-    `- DHCP : ${cleanIpconfigValue(dhcpLine)}`,
-    `- DNS : ${cleanIpconfigValue(dnsLine)}`,
-    `- Ethernet : ${ethernetConnected ? 'Connecté' : 'Non confirmé'}`,
-    `- Wi-Fi : ${wifiDisconnected ? 'Déconnecté' : 'Non confirmé'}`,
-    ``,
-    `📡 Tests`,
-    `- Ping 8.8.8.8 : ${pingDnsOk ? 'OK' : 'KO ou non disponible'}`,
-    `- Ping google.com : ${pingGoogleOk ? 'OK' : 'KO ou non disponible'}`,
-    `- Résolution DNS : ${dnsOk ? 'OK' : 'KO ou non disponible'}`,
-    ``,
-    `🧾 Conclusion`,
-    conclusion.map(x => `- ${x}`).join('\n')
-  ].join('\n');
+    case 'network_advanced':
+      return formatGenericDiagnosticResult(result, 'Diagnostic réseau avancé terminé');
+
+    case 'printer_basic':
+      return formatGenericDiagnosticResult(result, 'Diagnostic imprimante terminé');
+
+    case 'system_basic':
+      return formatGenericDiagnosticResult(result, 'Diagnostic système terminé');
+
+    case 'system_health':
+      return formatGenericDiagnosticResult(result, 'Diagnostic santé système terminé');
+
+    case 'storage_management':
+      return formatGenericDiagnosticResult(result, 'Diagnostic stockage terminé');
+
+    case 'security_audit':
+      return formatGenericDiagnosticResult(result, 'Audit sécurité terminé');
+
+    default:
+      return formatGenericDiagnosticResult(result, 'Diagnostic terminé');
+  }
 }
 //Récupérer l’ID du site SharePoint
 
