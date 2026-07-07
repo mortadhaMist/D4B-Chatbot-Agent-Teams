@@ -26,6 +26,19 @@ function getDiagnosticRequest(text) {
   const normalized = normalizeTextForIntent(text);
 
   if (
+    normalized.includes('diagnostic reseau avance') ||
+    normalized.includes('diagnostic avance reseau') ||
+    normalized.includes('test reseau avance') ||
+    normalized.includes('network advanced') ||
+    normalized.includes('diagnostic network advanced')
+  ) {
+    return {
+      type: 'network_advanced',
+      label: 'diagnostic réseau avancé'
+    };
+  }
+
+  if (
     normalized.includes('diagnostic reseau') ||
     normalized.includes('test reseau') ||
     normalized.includes('tester reseau') ||
@@ -47,6 +60,45 @@ function getDiagnosticRequest(text) {
     return {
       type: 'printer_basic',
       label: 'diagnostic imprimante'
+    };
+  }
+
+  if (
+    normalized.includes('diagnostic sante') ||
+    normalized.includes('sante systeme') ||
+    normalized.includes('system health') ||
+    normalized.includes('diagnostic performance') ||
+    normalized.includes('pc lent') ||
+    normalized.includes('ordinateur lent')
+  ) {
+    return {
+      type: 'system_health',
+      label: 'diagnostic santé système'
+    };
+  }
+
+  if (
+    normalized.includes('diagnostic stockage') ||
+    normalized.includes('stockage') ||
+    normalized.includes('disque') ||
+    normalized.includes('espace disque') ||
+    normalized.includes('storage')
+  ) {
+    return {
+      type: 'storage_management',
+      label: 'diagnostic stockage'
+    };
+  }
+
+  if (
+    normalized.includes('audit securite') ||
+    normalized.includes('diagnostic securite') ||
+    normalized.includes('security audit') ||
+    normalized.includes('audit pc')
+  ) {
+    return {
+      type: 'security_audit',
+      label: 'audit sécurité'
     };
   }
 
@@ -421,9 +473,11 @@ const diagnosticRequest = getDiagnosticRequest(text);
 if (diagnosticRequest) {
   pendingDiagnostics.set(teamsConversationKey, diagnosticRequest);
 
-  await context.sendActivity(
-    `Je peux lancer un ${diagnosticRequest.label} sur votre PC.\n\nConfirmez-vous ? Répondez "oui".`
-  );
+await context.sendActivity(
+  `Je peux lancer un ${diagnosticRequest.label} sur votre PC.\n\n` +
+  `Type technique : ${diagnosticRequest.type}\n\n` +
+  `Confirmez-vous ? Répondez "oui".`
+);
 
   await next();
   return;
