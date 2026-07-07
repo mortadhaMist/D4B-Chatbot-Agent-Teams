@@ -19,6 +19,72 @@ Utilisez les extraits de la base de connaissances lorsque disponibles.
 const teamsConversationHistory = new Map();
 const MAX_TEAMS_HISTORY_TURNS = 20;
 
+const diagnosticJobs = [];
+const pendingDiagnostics = new Map();
+
+function getDiagnosticRequest(text) {
+  const normalized = normalizeTextForIntent(text);
+
+  if (
+    normalized.includes('diagnostic reseau') ||
+    normalized.includes('test reseau') ||
+    normalized.includes('tester reseau') ||
+    normalized.includes('probleme internet') ||
+    normalized.includes('wifi') ||
+    normalized.includes('connexion')
+  ) {
+    return {
+      type: 'network_basic',
+      label: 'diagnostic réseau'
+    };
+  }
+
+  if (
+    normalized.includes('diagnostic imprimante') ||
+    normalized.includes('probleme imprimante') ||
+    normalized.includes('impression')
+  ) {
+    return {
+      type: 'printer_basic',
+      label: 'diagnostic imprimante'
+    };
+  }
+
+  if (
+    normalized.includes('diagnostic pc') ||
+    normalized.includes('diagnostic systeme') ||
+    normalized.includes('system info') ||
+    normalized.includes('info pc')
+  ) {
+    return {
+      type: 'system_basic',
+      label: 'diagnostic système'
+    };
+  }
+
+  return null;
+}
+
+function isYesConfirmation(text) {
+  const normalized = normalizeTextForIntent(text);
+  return /^(oui|yes|ok|confirme|je confirme|lance|lancer)$/i.test(normalized);
+}
+
+function createDiagnosticJob(deviceId, type, requestedBy) {
+  const job = {
+    id: `JOB-${Date.now()}`,
+    deviceId,
+    type,
+    requestedBy,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    result: null
+  };
+
+  diagnosticJobs.push(job);
+  return job;
+}
+
 function normalizeTextForIntent(text) {
   return String(text || '')
     .toLowerCase()
@@ -303,7 +369,65 @@ if (isGreetingOnly(text)) {
   await next();
   return;
 }
+const pendingDiagnostic = pendingDiagnostics.get(teamsConversationKey);
 
+if (pendingDiagnostic && isYesConfirmation(text)) {
+  const deviceId = 'mortadha-pc';
+
+  const job = createDiagnosticJob(
+    deviceId,
+    pendingDiagnostic.type,
+    userEmail || userName
+  );
+
+  pendingDiagnostics.delete(teamsConversationKey);
+
+  const replyText =
+    `Diagnostic lancé sur votre PC : ${pendingDiagnostic.label}.\n\n` +
+    `ID du job : ${job.id}\n\n` +
+    `Attendez 10 à 20 secondes, puis écrivez : résultat diagnostic`;
+
+  saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+  await context.sendActivity(replyText);
+  await next();
+  return;
+}
+
+if (normalizeTextForIntent(text).includes('resultat diagnostic')) {
+  const latestUrl = `http://127.0.0.1:${PORT}/api/diagnostics/latest?deviceId=mortadha-pc`;
+
+  try {
+    const resultRes = await fetch(latestUrl);
+    const resultData = await resultRes.json();
+
+    if (!resultData.job) {
+      await context.sendActivity('Aucun diagnostic trouvé pour le moment.');
+    } else if (resultData.job.status !== 'completed') {
+      await context.sendActivity(`Le diagnostic est encore en cours. Statut : ${resultData.job.status}`);
+    } else {
+      const shortResult = JSON.stringify(resultData.job.result, null, 2).slice(0, 3500);
+      await context.sendActivity(`Résultat du diagnostic :\n\n${shortResult}`);
+    }
+  } catch (err) {
+    await context.sendActivity(`Impossible de lire le résultat du diagnostic : ${err.message || err}`);
+  }
+
+  await next();
+  return;
+}
+
+const diagnosticRequest = getDiagnosticRequest(text);
+
+if (diagnosticRequest) {
+  pendingDiagnostics.set(teamsConversationKey, diagnosticRequest);
+
+  await context.sendActivity(
+    `Je peux lancer un ${diagnosticRequest.label} sur votre PC.\n\nConfirmez-vous ? Répondez "oui".`
+  );
+
+  await next();
+  return;
+}
 // Création ticket Teams : l'utilisateur écrit "technicien"
 if (isCreateTicketRequest(text)) {
   try {
@@ -1162,8 +1286,71 @@ async function handleApi(req, res) {
       const responsePayload = { ...data, sharepoint_used: !!snippets };
       return res.writeHead(resp.ok ? 200 : (resp.status || 500), { 'Content-Type': 'application/json' }), res.end(JSON.stringify(responsePayload));
     }
+// PC agent: get next diagnostic job
+if (req.method === 'GET' && req.url.startsWith('/api/agent/jobs')) {
+  const token = req.headers['x-agent-token'];
 
-    // Atera ticket proxy
+  if (!process.env.AGENT_TOKEN || token !== process.env.AGENT_TOKEN) {
+    return sendJsonResponse(res, 401, { error: 'unauthorized_agent' });
+  }
+
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const deviceId = url.searchParams.get('deviceId');
+
+  if (!deviceId) {
+    return sendJsonResponse(res, 400, { error: 'missing_deviceId' });
+  }
+
+  const job = diagnosticJobs.find(j =>
+    j.deviceId === deviceId &&
+    j.status === 'pending'
+  );
+
+  if (!job) {
+    return sendJsonResponse(res, 200, { job: null });
+  }
+
+  job.status = 'running';
+  job.startedAt = new Date().toISOString();
+
+  return sendJsonResponse(res, 200, { job });
+}
+
+// PC agent: send diagnostic result
+if (req.method === 'POST' && req.url === '/api/agent/jobs/result') {
+  const token = req.headers['x-agent-token'];
+
+  if (!process.env.AGENT_TOKEN || token !== process.env.AGENT_TOKEN) {
+    return sendJsonResponse(res, 401, { error: 'unauthorized_agent' });
+  }
+
+  const body = await readJson(req);
+  const job = diagnosticJobs.find(j => j.id === body.jobId);
+
+  if (!job) {
+    return sendJsonResponse(res, 404, { error: 'job_not_found' });
+  }
+
+  job.status = 'completed';
+  job.result = body.result;
+  job.completedAt = new Date().toISOString();
+
+  return sendJsonResponse(res, 200, { success: true });
+}
+
+// Teams: get latest diagnostic result
+if (req.method === 'GET' && req.url.startsWith('/api/diagnostics/latest')) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const deviceId = url.searchParams.get('deviceId') || 'mortadha-pc';
+
+  const jobs = diagnosticJobs
+    .filter(j => j.deviceId === deviceId)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+  return sendJsonResponse(res, 200, {
+    job: jobs[0] || null
+  });
+}
     // Atera ticket proxy
 if (req.method === 'POST' && req.url === '/api/atera') {
   try {
@@ -1224,7 +1411,7 @@ const server = http.createServer(async (req, res) => {
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-KEY');
+res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-KEY, X-Agent-Token');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
