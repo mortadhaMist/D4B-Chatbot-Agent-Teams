@@ -1029,25 +1029,36 @@ function formatDiagnosticResultForTeams(result) {
       return formatNetworkBasicResult(result);
 
     case 'network_advanced':
-      return formatGenericDiagnosticResult(result, 'Diagnostic réseau avancé terminé');
+      return formatNetworkAdvancedResult(result);
 
     case 'printer_basic':
-      return formatGenericDiagnosticResult(result, 'Diagnostic imprimante terminé');
+      return formatPrinterBasicResult(result);
 
     case 'system_basic':
-      return formatGenericDiagnosticResult(result, 'Diagnostic système terminé');
+      return formatSystemBasicResult(result);
 
     case 'system_health':
-      return formatGenericDiagnosticResult(result, 'Diagnostic santé système terminé');
+      return formatSystemHealthResult(result);
 
     case 'storage_management':
-      return formatGenericDiagnosticResult(result, 'Diagnostic stockage terminé');
+      return formatStorageManagementResult(result);
 
     case 'security_audit':
-      return formatGenericDiagnosticResult(result, 'Audit sécurité terminé');
+      return formatSecurityAuditResult(result);
 
     default:
-      return formatGenericDiagnosticResult(result, 'Diagnostic terminé');
+      return [
+        formatDiagnosticHeader(result, 'Diagnostic terminé'),
+        ``,
+        `📋 Résultats`,
+        ...(result.results || []).map(item => {
+          return [
+            `Commande : ${item.command}`,
+            `Statut : ${commandStatusIcon(item)}`,
+            cleanDiagnosticText(item.stdout || item.stderr || item.error, 1000)
+          ].join('\n');
+        })
+      ].join('\n\n').slice(0, 7000);
   }
 }
 //Récupérer l’ID du site SharePoint
