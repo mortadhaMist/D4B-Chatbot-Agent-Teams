@@ -163,7 +163,7 @@ function appendTechnicienPromptOnce(replyText) {
 let teamsAdapter = null;
 let teamsBotHandler = null;
 try {
-  const { BotFrameworkAdapter, TeamsActivityHandler } = require('botbuilder');
+  const { BotFrameworkAdapter, TeamsActivityHandler, TeamsInfo } = require('botbuilder');
   
   // SÃ©curisation de la rÃ©cupÃ©ration des variables d'environnement
   const microsoftAppId = process.env.MICROSOFT_APP_ID ? String(process.env.MICROSOFT_APP_ID).trim() : null;
@@ -251,7 +251,26 @@ try {
 const rawText = (context.activity && context.activity.text) ? context.activity.text : '';
 const text = String(rawText || '').trim();
 const userName = context.activity.from?.name || 'TeamsUser';
-const userEmail = getTeamsUserEmail(context);
+let userEmail = getTeamsUserEmail(context);
+
+if (!userEmail) {
+  try {
+    const member = await TeamsInfo.getMember(context, context.activity.from.id);
+    userEmail =
+      member?.email ||
+      member?.userPrincipalName ||
+      member?.userPrincipalName?.toLowerCase() ||
+      null;
+
+    console.log('Teams member resolved:', {
+      name: member?.name,
+      email: member?.email,
+      userPrincipalName: member?.userPrincipalName
+    });
+  } catch (memberError) {
+    console.warn('Could not resolve Teams member email:', memberError?.message || memberError);
+  }
+}
 
 const teamsConversationKey =
   context.activity.conversation?.id ||
@@ -260,7 +279,7 @@ const teamsConversationKey =
 
 // Message d'accueil seulement au début si l'utilisateur dit juste bonjour
 if (getTeamsConversationHistory(teamsConversationKey).length === 0 && isGreetingOnly(text)) {
-  const welcomeText = 'Bonjour ! Je suis l’assistant IT KFC France. Décrivez-moi votre problème informatique : caisse, TPE, imprimante, réseau, Wi-Fi, authentification…';
+  const welcomeText = 'Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)';
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
   await context.sendActivity(appendTechnicienPromptOnce(welcomeText));
   await next();
@@ -296,7 +315,9 @@ if (isCreateTicketRequest(text)) {
     await context.sendActivity(ticketReply);
   } catch (ticketError) {
     console.error('Teams ticket creation failed:', ticketError);
-    await context.sendActivity(`Je n’ai pas pu créer le ticket Atera : ${ticketError.message || ticketError}`);
+    await context.sendActivity(
+  `Je n’ai pas pu créer le ticket Atera.\n\nErreur technique : ${ticketError.message || ticketError}`
+);
   }
 
   await next();
@@ -898,12 +919,17 @@ async function createAteraTicket(body) {
     console.warn('Failed to persist Atera request locally', e);
   }
 
-  if (!aRes.ok) {
-    const err = new Error(aData?.error || aData?.message || aData?.text || 'Unknown Atera error');
-    err.status = aRes.status;
-    err.details = aData;
-    throw err;
-  }
+ if (!aRes.ok) {
+  const readableDetails =
+    typeof aData === 'string'
+      ? aData
+      : JSON.stringify(aData, null, 2);
+
+  const err = new Error(`Atera HTTP ${aRes.status}: ${readableDetails}`);
+  err.status = aRes.status;
+  err.details = aData;
+  throw err;
+}
 
   return aData;
 }
