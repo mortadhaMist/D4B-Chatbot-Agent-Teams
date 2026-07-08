@@ -956,6 +956,48 @@ function extractAfterColon(line) {
   const parts = String(line).split(':');
   return parts.length > 1 ? parts.slice(1).join(':').trim() : String(line).trim();
 }
+function extractNetshValue(text, label) {
+  const normalizedLabel = normalizeTextForIntent(label);
+  const lines = String(text || '').split(/\r?\n/);
+
+  const line = lines.find(l =>
+    normalizeTextForIntent(l).startsWith(normalizedLabel)
+  );
+
+  if (!line) return 'Non détecté';
+
+  const parts = line.split(':');
+  return parts.length > 1 ? parts.slice(1).join(':').trim() : line.trim();
+}
+
+function extractWifiProfiles(text) {
+  const lines = String(text || '').split(/\r?\n/);
+
+  return lines
+    .filter(line => normalizeTextForIntent(line).includes('profil tous les utilisateurs'))
+    .map(line => {
+      const parts = line.split(':');
+      return parts.length > 1 ? parts.slice(1).join(':').trim() : line.trim();
+    })
+    .filter(Boolean);
+}
+
+function extractDnsLines(text) {
+  const lines = String(text || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  return lines
+    .filter(line =>
+      normalizeTextForIntent(line).includes('ethernet') ||
+      normalizeTextForIntent(line).includes('wi-fi') ||
+      normalizeTextForIntent(line).includes('wifi')
+    )
+    .slice(0, 8);
+}
+
 
 function formatDiagnosticHeader(result, title) {
   return [
@@ -1062,7 +1104,75 @@ function formatNetworkAdvancedResult(result) {
       : '- La connectivité avancée n’est pas confirmée. Vérifier passerelle, câble/Wi-Fi, VLAN ou filtrage réseau.'
   ].join('\n').slice(0, 7000);
 }
+function formatWifiDiagnosticsResult(result) {
+  const interfaces = findCommand(result, 'netsh wlan show interfaces');
+  const profiles = findCommand(result, 'netsh wlan show profiles');
+  const adapter = findCommand(result, 'Get-NetAdapter');
+  const dns = findCommand(result, 'Get-DnsClientServerAddress');
 
+  const interfaceText = interfaces?.stdout || '';
+  const profilesText = profiles?.stdout || '';
+  const adapterText = adapter?.stdout || '';
+  const dnsText = dns?.stdout || '';
+
+  const wifiName = extractNetshValue(interfaceText, 'Nom');
+  const description = extractNetshValue(interfaceText, 'Description');
+  const state = extractNetshValue(interfaceText, 'État');
+  const radio = extractNetshValue(interfaceText, 'Statut de la radio');
+  const mac = extractNetshValue(interfaceText, 'Adresse physique');
+
+  const savedProfiles = extractWifiProfiles(profilesText);
+
+  const isDisconnected =
+    normalizeTextForIntent(interfaceText).includes('deconnecte') ||
+    normalizeTextForIntent(adapterText).includes('disconnected');
+
+  const adapterStatus = isDisconnected ? 'Déconnecté' : 'Connecté ou actif';
+  const dnsLines = extractDnsLines(dnsText);
+
+  const conclusion = [];
+
+  if (isDisconnected) {
+    conclusion.push('La carte Wi-Fi est détectée mais actuellement déconnectée.');
+  } else {
+    conclusion.push('La carte Wi-Fi semble active ou connectée.');
+  }
+
+  if (savedProfiles.length) {
+    conclusion.push(`${savedProfiles.length} profil(s) Wi-Fi enregistré(s) trouvé(s).`);
+  } else {
+    conclusion.push('Aucun profil Wi-Fi utilisateur détecté.');
+  }
+
+  if (normalizeTextForIntent(interfaceText).includes('materiel active') || normalizeTextForIntent(interfaceText).includes('logiciel active')) {
+    conclusion.push('La radio Wi-Fi semble activée côté matériel/logiciel.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic Wi-Fi terminé'),
+    ``,
+    `📶 Interface Wi-Fi`,
+    `- Nom : ${wifiName}`,
+    `- Description : ${description}`,
+    `- Adresse MAC : ${mac}`,
+    `- État : ${state}`,
+    `- Radio : ${radio}`,
+    `- Statut adaptateur : ${adapterStatus}`,
+    ``,
+    `📡 Profils Wi-Fi enregistrés`,
+    savedProfiles.length
+      ? savedProfiles.map(profile => `- ${profile}`).join('\n')
+      : '- Aucun profil détecté',
+    ``,
+    `🌐 DNS détectés`,
+    dnsLines.length
+      ? dnsLines.map(line => `- ${line}`).join('\n')
+      : '- Non détecté',
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
 function formatPrinterBasicResult(result) {
   const printers = findCommand(result, 'Get-Printer');
   const spooler = findCommand(result, 'Get-Service Spooler');
@@ -1133,49 +1243,318 @@ function formatSystemBasicResult(result) {
   ].join('\n').slice(0, 7000);
 }
 
+function extractPowershellFields(text) {
+  const fields = {};
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+
+  for (const line of lines) {
+    const match = line.match(/^\s*([^:]+)\s*:\s*(.*)$/);
+    if (match) {
+      fields[match[1].trim()] = match[2].trim();
+    }
+  }
+
+  return fields;
+}
+
+function parseWindowsEvents(text, maxEvents = 5) {
+  const raw = String(text || '').replace(/\r/g, '');
+  const chunks = raw
+    .split(/\n\s*\n/)
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  const events = [];
+
+  for (const chunk of chunks) {
+    const fields = extractPowershellFields(chunk);
+
+    if (fields.TimeCreated || fields.ProviderName || fields.Id || fields.Message) {
+      events.push({
+        time: fields.TimeCreated || 'Non détecté',
+        provider: fields.ProviderName || 'Non détecté',
+        id: fields.Id || 'Non détecté',
+        message: fields.Message || 'Message non disponible'
+      });
+    }
+  }
+
+  return events.slice(0, maxEvents);
+}
+
+function parseSimpleTable(text, maxRows = 8) {
+  const lines = String(text || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map(x => x.trim())
+    .filter(Boolean)
+    .filter(line => !/^[-\s]+$/.test(line));
+
+  if (lines.length <= 2) return [];
+
+  // Skip header line.
+  return lines.slice(1, maxRows + 1);
+}
+
+function truncateLine(text, max = 180) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  return clean.length > max ? clean.slice(0, max) + '...' : clean;
+}
+
 function formatSystemHealthResult(result) {
   const computerInfo = findCommand(result, 'Get-ComputerInfo');
   const events = findCommand(result, 'Get-WinEvent');
   const processes = findCommand(result, 'Get-Process');
   const services = findCommand(result, 'Get-Service');
 
-  const eventsHasErrors = !!String(events?.stdout || '').trim();
-  const stoppedServices = !!String(services?.stdout || '').trim();
+  const machine = extractPowershellFields(computerInfo?.stdout || '');
+  const eventList = parseWindowsEvents(events?.stdout || '', 5);
+  const processRows = parseSimpleTable(processes?.stdout || '', 5);
+  const serviceRows = parseSimpleTable(services?.stdout || '', 8);
+
+  const hasErrors = eventList.length > 0;
+  const hasStoppedServices = serviceRows.length > 0;
 
   const conclusion = [];
 
-  if (eventsHasErrors) {
-    conclusion.push('Des erreurs système récentes sont présentes dans les journaux Windows.');
+  if (hasErrors) {
+    conclusion.push(`${eventList.length} erreur(s) système récente(s) détectée(s).`);
   } else {
-    conclusion.push('Aucune erreur système critique visible dans la sortie récupérée.');
+    conclusion.push('Aucune erreur système récente détectée dans la sortie récupérée.');
   }
 
-  if (stoppedServices) {
-    conclusion.push('Certains services automatiques semblent arrêtés : à vérifier.');
+  if (hasStoppedServices) {
+    conclusion.push(`${serviceRows.length} service(s) automatique(s) arrêté(s) à vérifier.`);
   } else {
-    conclusion.push('Aucun service automatique arrêté visible dans la sortie récupérée.');
+    conclusion.push('Aucun service automatique arrêté visible.');
+  }
+
+  if (processRows.length) {
+    conclusion.push('Les processus les plus consommateurs CPU ont été listés pour analyse.');
   }
 
   return [
     formatDiagnosticHeader(result, 'Diagnostic santé système terminé'),
     ``,
     `🖥️ Informations machine`,
-    cleanDiagnosticText(computerInfo?.stdout || computerInfo?.stderr || computerInfo?.error, 1200),
+    `- OS : ${machine.OsName || 'Non détecté'}`,
+    `- Version : ${machine.OsVersion || 'Non détecté'}`,
+    `- Modèle : ${machine.CsModel || 'Non détecté'}`,
+    `- BIOS : ${machine.BiosManufacturer || 'Non détecté'}`,
+    `- Exécuté en administrateur : ${result.isAdmin ? 'Oui' : 'Non'}`,
     ``,
     `🚨 Dernières erreurs système`,
-    cleanDiagnosticText(events?.stdout || events?.stderr || events?.error, 1800),
+    eventList.length
+      ? eventList.map((event, index) => {
+          return [
+            `${index + 1}. ${event.provider} — ID ${event.id}`,
+            `   Date : ${event.time}`,
+            `   Message : ${truncateLine(event.message, 220)}`
+          ].join('\n');
+        }).join('\n\n')
+      : '- Aucune erreur détectée',
     ``,
     `⚙️ Processus les plus consommateurs CPU`,
-    cleanDiagnosticText(processes?.stdout || processes?.stderr || processes?.error, 1200),
+    processRows.length
+      ? processRows.map(row => `- ${truncateLine(row, 160)}`).join('\n')
+      : '- Non détecté',
     ``,
     `🧰 Services automatiques arrêtés`,
-    cleanDiagnosticText(services?.stdout || services?.stderr || services?.error, 1200),
+    serviceRows.length
+      ? serviceRows.map(row => `- ${truncateLine(row, 170)}`).join('\n')
+      : '- Aucun service automatique arrêté détecté',
     ``,
     `🧾 Conclusion`,
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
 
+function formatBool(value) {
+  if (value === true || String(value).toLowerCase() === 'true') return 'Oui';
+  if (value === false || String(value).toLowerCase() === 'false') return 'Non';
+  return 'Non détecté';
+}
+
+function severityLabel(value) {
+  const severity = Number(value);
+
+  if (severity >= 5) return 'Critique';
+  if (severity >= 4) return 'Élevée';
+  if (severity >= 2) return 'Moyenne';
+  if (severity >= 1) return 'Faible';
+
+  return 'Non détecté';
+}
+
+function formatDefenderSecurityResult(result) {
+  const statusCommand = findCommand(result, 'Get-MpComputerStatus');
+  const threatsCommand = findCommand(result, 'Get-MpThreat');
+  const firewallCommand = findCommand(result, 'Get-NetFirewallProfile');
+
+  const defenderStatus = safeJsonParseAny(statusCommand?.stdout);
+  const threats = asArray(safeJsonParseAny(threatsCommand?.stdout));
+  const firewallProfiles = asArray(safeJsonParseAny(firewallCommand?.stdout));
+
+  const skippedAdminCommands = (result.results || []).filter(item => item.skipped || item.requiresAdmin && item.error);
+
+  const conclusion = [];
+
+  if (skippedAdminCommands.length) {
+    conclusion.push('Certaines vérifications Defender ont été ignorées car l’agent ne tourne pas en administrateur.');
+  }
+
+  if (defenderStatus) {
+    if (defenderStatus.RealTimeProtectionEnabled === true) {
+      conclusion.push('La protection en temps réel Microsoft Defender est activée.');
+    } else {
+      conclusion.push('La protection en temps réel Microsoft Defender semble désactivée ou non détectée.');
+    }
+
+    if (defenderStatus.DefenderSignaturesOutOfDate === true) {
+      conclusion.push('Les signatures Defender semblent obsolètes.');
+    }
+  }
+
+  if (threats.length) {
+    conclusion.push(`${threats.length} menace(s) Defender détectée(s).`);
+  } else {
+    conclusion.push('Aucune menace Defender détectée dans la sortie récupérée.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic sécurité Defender terminé'),
+    ``,
+    `🛡️ Microsoft Defender`,
+    defenderStatus
+      ? [
+          `- Service Defender actif : ${formatBool(defenderStatus.AMServiceEnabled)}`,
+          `- Antivirus activé : ${formatBool(defenderStatus.AntivirusEnabled)}`,
+          `- Protection temps réel : ${formatBool(defenderStatus.RealTimeProtectionEnabled)}`,
+          `- Antispyware activé : ${formatBool(defenderStatus.AntispywareEnabled)}`,
+          `- Âge dernier scan complet : ${defenderStatus.FullScanAge ?? 'Non détecté'}`,
+          `- Âge dernier scan rapide : ${defenderStatus.QuickScanAge ?? 'Non détecté'}`,
+          `- Signatures obsolètes : ${formatBool(defenderStatus.DefenderSignaturesOutOfDate)}`,
+          `- Dernière signature antivirus : ${defenderStatus.AntivirusSignatureLastUpdated || 'Non détecté'}`,
+          `- Dernière signature antispyware : ${defenderStatus.AntispywareSignatureLastUpdated || 'Non détecté'}`
+        ].join('\n')
+      : [
+          `- Statut : Non détecté`,
+          `- Raison possible : agent non lancé en administrateur ou module Defender inaccessible`
+        ].join('\n'),
+    ``,
+    `🚨 Menaces détectées`,
+    threats.length
+      ? threats.slice(0, 8).map(threat => {
+          return `- ${threat.ThreatName || 'Menace inconnue'} — sévérité ${severityLabel(threat.SeverityID)}${threat.Resources ? ` — ${truncateLine(String(threat.Resources), 160)}` : ''}`;
+        }).join('\n')
+      : '- Aucune menace détectée',
+    ``,
+    `🧱 Pare-feu Windows`,
+    firewallProfiles.length
+      ? firewallProfiles.map(profile => {
+          return `- ${profile.Name || 'Profil'} : activé ${formatBool(profile.Enabled)}, entrant ${profile.DefaultInboundAction || 'N/A'}, sortant ${profile.DefaultOutboundAction || 'N/A'}`;
+        }).join('\n')
+      : '- Profils pare-feu non détectés',
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
+function safeJsonParseArray(text) {
+  try {
+    const raw = String(text || '').trim();
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw);
+
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === 'object') return [parsed];
+
+    return [];
+  } catch {
+    return [];
+  }
+}
+function safeJsonParseAny(text) {
+  try {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function asArray(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function truncateLine(text, max = 180) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  return clean.length > max ? clean.slice(0, max) + '...' : clean;
+}
+
+
+function formatUserSessionResult(result) {
+  const whoami = findCommand(result, 'whoami');
+  const queryUser = findCommand(result, 'query user');
+  const localUsers = findCommand(result, 'Get-LocalUser');
+  const adminMembers = findCommand(result, 'Get-LocalGroupMember');
+
+  const sessionName = cleanDiagnosticText(whoami?.stdout, 200) || 'Non détecté';
+
+  const queryOutput =
+    cleanDiagnosticText(queryUser?.stdout, 1200) ||
+    cleanDiagnosticText(queryUser?.stderr, 1200) ||
+    'Non détecté';
+
+  const users = safeJsonParseArray(localUsers?.stdout);
+  const admins = safeJsonParseArray(adminMembers?.stdout);
+
+  const enabledUsers = users.filter(user => user.Enabled === true);
+  const disabledUsers = users.filter(user => user.Enabled === false);
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic session utilisateur terminé'),
+    ``,
+    `👤 Session active`,
+    `- Utilisateur courant : ${sessionName}`,
+    `- Poste : ${result.hostname || result.deviceId || 'Non détecté'}`,
+    `- Exécuté en administrateur : ${result.isAdmin ? 'Oui' : 'Non'}`,
+    ``,
+    `🖥️ Session Windows`,
+    queryOutput
+      .split('\n')
+      .map(line => `- ${line.trim()}`)
+      .filter(line => line !== '-')
+      .join('\n'),
+    ``,
+    `👥 Comptes locaux`,
+    users.length
+      ? [
+          `- Comptes activés : ${enabledUsers.length || 0}`,
+          `- Comptes désactivés : ${disabledUsers.length || 0}`,
+          ``,
+          ...users.map(user => {
+            return `- ${user.Name || 'Inconnu'} : ${user.Enabled ? 'Activé' : 'Désactivé'}${user.LastLogon ? `, dernière connexion ${user.LastLogon}` : ''}`;
+          })
+        ].join('\n')
+      : '- Aucun compte local détecté',
+    ``,
+    `🛡️ Administrateurs locaux`,
+    admins.length
+      ? admins.map(member => {
+          return `- ${member.Name || 'Inconnu'}${member.ObjectClass ? ` (${member.ObjectClass})` : ''}${member.PrincipalSource ? ` — ${member.PrincipalSource}` : ''}`;
+        }).join('\n')
+      : '- Aucun membre administrateur local détecté ou accès refusé',
+    ``,
+    `🧾 Conclusion`,
+    users.length
+      ? '- Les informations de session et comptes locaux ont été récupérées.'
+      : '- Les informations utilisateur sont partielles. Vérifier les droits ou la langue système si nécessaire.'
+  ].join('\n').slice(0, 7000);
+}
 function formatStorageManagementResult(result) {
   const volumes = findCommand(result, 'Get-Volume');
   const disks = findCommand(result, 'Get-PhysicalDisk');
@@ -1226,7 +1605,104 @@ function formatSecurityAuditResult(result) {
     `- Ce diagnostic peut contenir des informations sensibles : à partager uniquement avec un technicien autorisé.`
   ].join('\n').slice(0, 7000);
 }
+function safeJsonParseAny(text) {
+  try {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
+function asArray(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function serviceStatusLabel(service) {
+  if (!service) return 'Non détecté';
+
+  const status = String(service.Status || '').toLowerCase();
+
+  if (status === 'running') return '🟢 En cours';
+  if (status === 'stopped') return '🔴 Arrêté';
+
+  return service.Status || 'Non détecté';
+}
+
+function formatRemoteAccessResult(result) {
+  const servicesCommand = findCommand(result, 'Get-Service TermService');
+  const wsmanCommand = findCommand(result, 'Test-WSMan');
+  const firewallCommand = findCommand(result, 'Get-NetFirewallRule');
+
+  const services = asArray(safeJsonParseAny(servicesCommand?.stdout));
+  const wsman = safeJsonParseAny(wsmanCommand?.stdout);
+  const firewallRules = asArray(safeJsonParseAny(firewallCommand?.stdout));
+
+  const termService = services.find(s => s.Name === 'TermService');
+  const remoteRegistry = services.find(s => s.Name === 'RemoteRegistry');
+  const winrm = services.find(s => s.Name === 'WinRM');
+
+  const rdpFirewallEnabled = firewallRules.some(rule =>
+    String(rule.Enabled).toLowerCase() === 'true' ||
+    String(rule.Enabled).toLowerCase() === 'enabled'
+  );
+
+  const wsmanAvailable = wsman && wsman.Available !== false && !wsman.Error;
+
+  const conclusion = [];
+
+  if (!termService || String(termService.Status).toLowerCase() !== 'running') {
+    conclusion.push('Le service Bureau à distance n’est pas en cours d’exécution.');
+  } else {
+    conclusion.push('Le service Bureau à distance est actif.');
+  }
+
+  if (!wsmanAvailable) {
+    conclusion.push('WinRM / PowerShell Remoting n’est pas disponible actuellement.');
+  } else {
+    conclusion.push('WinRM / PowerShell Remoting répond correctement.');
+  }
+
+  if (!rdpFirewallEnabled) {
+    conclusion.push('Aucune règle pare-feu Bureau à distance active détectée.');
+  } else {
+    conclusion.push('Des règles pare-feu Bureau à distance actives sont détectées.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic accès distant terminé'),
+    ``,
+    `🖥️ Services d’accès distant`,
+    `- Bureau à distance / TermService : ${serviceStatusLabel(termService)} — démarrage ${termService?.StartType || 'Non détecté'}`,
+    `- Registre distant / RemoteRegistry : ${serviceStatusLabel(remoteRegistry)} — démarrage ${remoteRegistry?.StartType || 'Non détecté'}`,
+    `- WinRM : ${serviceStatusLabel(winrm)} — démarrage ${winrm?.StartType || 'Non détecté'}`,
+    ``,
+    `🔌 WinRM / PowerShell Remoting`,
+    wsmanAvailable
+      ? [
+          `- Statut : 🟢 Disponible`,
+          `- Vendor : ${wsman.ProductVendor || 'Non détecté'}`,
+          `- Version : ${wsman.ProductVersion || 'Non détecté'}`,
+          `- Protocole : ${wsman.ProtocolVersion || 'Non détecté'}`
+        ].join('\n')
+      : [
+          `- Statut : 🔴 Indisponible`,
+          `- Erreur : ${truncateLine(wsman?.Error || wsmanCommand?.stderr || 'Non détecté', 350)}`
+        ].join('\n'),
+    ``,
+    `🧱 Pare-feu Bureau à distance`,
+    firewallRules.length
+      ? firewallRules.slice(0, 8).map(rule => {
+          return `- ${rule.DisplayName || 'Règle inconnue'} : ${rule.Enabled ? 'activée' : 'désactivée'} / ${rule.Direction || 'N/A'} / ${rule.Action || 'N/A'}`;
+        }).join('\n')
+      : '- Aucune règle Bureau à distance détectée',
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -1235,6 +1711,18 @@ function formatDiagnosticResultForTeams(result) {
   switch (result.type) {
     case 'network_basic':
       return formatNetworkBasicResult(result);
+
+case 'defender_security':
+  return formatDefenderSecurityResult(result);
+
+case 'remote_access':
+  return formatRemoteAccessResult(result);
+
+case 'wifi_diagnostics':
+  return formatWifiDiagnosticsResult(result);
+
+case 'user_session':
+  return formatUserSessionResult(result);
 
     case 'network_advanced':
       return formatNetworkAdvancedResult(result);
