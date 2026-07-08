@@ -1094,16 +1094,20 @@ function formatPrinterBasicResult(result) {
 function formatSystemBasicResult(result) {
   const hostname = findCommand(result, 'hostname');
   const whoami = findCommand(result, 'whoami');
-  const systeminfo = findCommand(result, 'systeminfo');
 
-  const sysText = systeminfo?.stdout || '';
+  const systemJsonCommand =
+    findCommand(result, 'Win32_OperatingSystem') ||
+    findCommand(result, 'Get-CimInstance') ||
+    findCommand(result, 'ConvertTo-Json');
 
-  const osLine = firstMatchingLine(sysText, ['Nom du système d’exploitation', 'OS Name']);
-  const versionLine = firstMatchingLine(sysText, ['Version du système', 'OS Version']);
-  const manufacturerLine = firstMatchingLine(sysText, ['Fabricant du système', 'System Manufacturer']);
-  const modelLine = firstMatchingLine(sysText, ['Modèle du système', 'System Model']);
-  const bootLine = firstMatchingLine(sysText, ['Heure de démarrage du système', 'System Boot Time']);
-  const memoryLine = firstMatchingLine(sysText, ['Mémoire physique totale', 'Total Physical Memory']);
+  let systemInfo = null;
+
+  try {
+    const raw = String(systemJsonCommand?.stdout || '').trim();
+    systemInfo = raw ? JSON.parse(raw) : null;
+  } catch {
+    systemInfo = null;
+  }
 
   return [
     formatDiagnosticHeader(result, 'Diagnostic système terminé'),
@@ -1111,17 +1115,21 @@ function formatSystemBasicResult(result) {
     `🖥️ Identité`,
     `- Hostname : ${cleanDiagnosticText(hostname?.stdout, 200)}`,
     `- Session : ${cleanDiagnosticText(whoami?.stdout, 200)}`,
+    `- Exécuté en administrateur : ${result.isAdmin ? 'Oui' : 'Non'}`,
     ``,
     `🧩 Informations système`,
-    `- OS : ${extractAfterColon(osLine)}`,
-    `- Version : ${extractAfterColon(versionLine)}`,
-    `- Fabricant : ${extractAfterColon(manufacturerLine)}`,
-    `- Modèle : ${extractAfterColon(modelLine)}`,
-    `- Dernier démarrage : ${extractAfterColon(bootLine)}`,
-    `- Mémoire : ${extractAfterColon(memoryLine)}`,
+    `- OS : ${systemInfo?.OsName || 'Non détecté'}`,
+    `- Version : ${systemInfo?.OsVersion || 'Non détecté'}`,
+    `- Build : ${systemInfo?.BuildNumber || 'Non détecté'}`,
+    `- Fabricant : ${systemInfo?.Manufacturer || 'Non détecté'}`,
+    `- Modèle : ${systemInfo?.Model || 'Non détecté'}`,
+    `- Dernier démarrage : ${systemInfo?.LastBootUpTime || 'Non détecté'}`,
+    `- Mémoire : ${systemInfo?.TotalMemoryGB ? `${systemInfo.TotalMemoryGB} Go` : 'Non détecté'}`,
+    `- BIOS : ${systemInfo?.BiosManufacturer || 'Non détecté'}`,
+    `- Numéro de série : ${systemInfo?.SerialNumber || 'Non détecté'}`,
     ``,
     `🧾 Conclusion`,
-    '- Informations système récupérées. Utiliser ces données pour identifier le poste ou préparer une escalade technique.'
+    '- Informations système récupérées via WMI/CIM. Ces données peuvent être utilisées pour identifier le poste ou préparer une escalade technique.'
   ].join('\n').slice(0, 7000);
 }
 
