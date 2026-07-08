@@ -22,6 +22,72 @@ const MAX_TEAMS_HISTORY_TURNS = 20;
 const diagnosticJobs = [];
 const pendingDiagnostics = new Map();
 
+const registeredAgents = new Map();
+const lastDiagnosticDeviceByConversation = new Map();
+
+function normalizeDeviceId(deviceId) {
+  return String(deviceId || '').trim().toUpperCase();
+}
+
+function touchAgentDevice(deviceId, extra = {}) {
+  const id = normalizeDeviceId(deviceId);
+  if (!id) return null;
+
+  const existing = registeredAgents.get(id) || {};
+
+  const device = {
+    ...existing,
+    ...extra,
+    deviceId: id,
+    firstSeenAt: existing.firstSeenAt || new Date().toISOString(),
+    lastSeenAt: new Date().toISOString()
+  };
+
+  registeredAgents.set(id, device);
+  return device;
+}
+
+function getOnlineDevices(maxAgeMs = 90000) {
+  const now = Date.now();
+
+  return Array.from(registeredAgents.values()).filter(device => {
+    const lastSeen = Date.parse(device.lastSeenAt || '');
+    return Number.isFinite(lastSeen) && now - lastSeen <= maxAgeMs;
+  });
+}
+
+function formatOnlineDevicesList() {
+  const devices = getOnlineDevices();
+
+  if (!devices.length) {
+    return 'Aucun agent PC connecté pour le moment.';
+  }
+
+  return devices
+    .map(device => `- ${device.deviceId} — vu à ${device.lastSeenAt}`)
+    .join('\n');
+}
+
+function extractDeviceIdFromText(text) {
+  const raw = String(text || '').trim();
+
+  const patterns = [
+    /\bsur\s+([a-zA-Z0-9._-]{3,})/i,
+    /\bpc\s+([a-zA-Z0-9._-]{3,})/i,
+    /\bposte\s+([a-zA-Z0-9._-]{3,})/i,
+    /\bdevice\s+([a-zA-Z0-9._-]{3,})/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match && match[1]) {
+      return normalizeDeviceId(match[1]);
+    }
+  }
+
+  return null;
+}
+
 function getDiagnosticRequest(text) {
   const normalized = normalizeTextForIntent(text);
 
@@ -424,7 +490,7 @@ if (isGreetingOnly(text)) {
 const pendingDiagnostic = pendingDiagnostics.get(teamsConversationKey);
 
 if (pendingDiagnostic && isYesConfirmation(text)) {
-  const deviceId = 'mortadha-pc';
+  const deviceId = pendingDiagnostic.deviceId;
 
   const job = createDiagnosticJob(
     deviceId,
@@ -433,9 +499,11 @@ if (pendingDiagnostic && isYesConfirmation(text)) {
   );
 
   pendingDiagnostics.delete(teamsConversationKey);
+  lastDiagnosticDeviceByConversation.set(teamsConversationKey, deviceId);
 
   const replyText =
-    `Diagnostic lancé sur votre PC : ${pendingDiagnostic.label}.\n\n` +
+    `Diagnostic lancé sur le poste : ${deviceId}\n\n` +
+    `Type : ${pendingDiagnostic.label}\n` +
     `ID du job : ${job.id}\n\n` +
     `Attendez 10 à 20 secondes, puis écrivez : résultat diagnostic`;
 
@@ -446,7 +514,23 @@ if (pendingDiagnostic && isYesConfirmation(text)) {
 }
 
 if (normalizeTextForIntent(text).includes('resultat diagnostic')) {
-  const latestUrl = `http://127.0.0.1:${PORT}/api/diagnostics/latest?deviceId=mortadha-pc`;
+  const requestedDeviceId = extractDeviceIdFromText(text);
+  const deviceId =
+    requestedDeviceId ||
+    lastDiagnosticDeviceByConversation.get(teamsConversationKey);
+
+  if (!deviceId) {
+    await context.sendActivity(
+      `Je ne sais pas encore pour quel poste lire le résultat.\n\n` +
+      `Écrivez par exemple : résultat diagnostic sur TN-D4B-PC2GWP08\n\n` +
+      `Postes connectés :\n${formatOnlineDevicesList()}`
+    );
+
+    await next();
+    return;
+  }
+
+  const latestUrl = `http://127.0.0.1:${PORT}/api/diagnostics/latest?deviceId=${encodeURIComponent(deviceId)}`;
 
   try {
     const resultRes = await fetch(latestUrl);
@@ -471,13 +555,34 @@ await context.sendActivity(formattedResult);
 const diagnosticRequest = getDiagnosticRequest(text);
 
 if (diagnosticRequest) {
-  pendingDiagnostics.set(teamsConversationKey, diagnosticRequest);
+  const requestedDeviceId = extractDeviceIdFromText(text);
+  const onlineDevices = getOnlineDevices();
 
-await context.sendActivity(
-  `Je peux lancer un ${diagnosticRequest.label} sur votre PC.\n\n` +
-  `Type technique : ${diagnosticRequest.type}\n\n` +
-  `Confirmez-vous ? Répondez "oui".`
-);
+  const targetDeviceId =
+    requestedDeviceId ||
+    (onlineDevices.length === 1 ? onlineDevices[0].deviceId : null);
+
+  if (!targetDeviceId) {
+    await context.sendActivity(
+      `Je peux lancer un ${diagnosticRequest.label}, mais je dois savoir sur quel PC.\n\n` +
+      `Écrivez par exemple : ${text} sur TN-D4B-PC2GWP08\n\n` +
+      `Postes connectés :\n${formatOnlineDevicesList()}`
+    );
+
+    await next();
+    return;
+  }
+
+  pendingDiagnostics.set(teamsConversationKey, {
+    ...diagnosticRequest,
+    deviceId: targetDeviceId
+  });
+
+  await context.sendActivity(
+    `Je peux lancer un ${diagnosticRequest.label} sur le poste ${targetDeviceId}.\n\n` +
+    `Type technique : ${diagnosticRequest.type}\n\n` +
+    `Confirmez-vous ? Répondez "oui".`
+  );
 
   await next();
   return;
@@ -977,48 +1082,6 @@ function formatSecurityAuditResult(result) {
   ].join('\n').slice(0, 7000);
 }
 
-function formatDiagnosticResultForTeams(result) {
-  if (!result) {
-    return 'Aucun résultat de diagnostic disponible.';
-  }
-
-  switch (result.type) {
-    case 'network_basic':
-      return formatNetworkBasicResult(result);
-
-    case 'network_advanced':
-      return formatNetworkAdvancedResult(result);
-
-    case 'printer_basic':
-      return formatPrinterBasicResult(result);
-
-    case 'system_basic':
-      return formatSystemBasicResult(result);
-
-    case 'system_health':
-      return formatSystemHealthResult(result);
-
-    case 'storage_management':
-      return formatStorageManagementResult(result);
-
-    case 'security_audit':
-      return formatSecurityAuditResult(result);
-
-    default:
-      return [
-        formatDiagnosticHeader(result, 'Diagnostic terminé'),
-        ``,
-        `📋 Résultats`,
-        ...(result.results || []).map(item => {
-          return [
-            `Commande : ${item.command}`,
-            `Statut : ${commandStatusIcon(item)}`,
-            cleanDiagnosticText(item.stdout || item.stderr || item.error, 1000)
-          ].join('\n');
-        })
-      ].join('\n\n').slice(0, 7000);
-  }
-}
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -1797,11 +1860,15 @@ if (req.method === 'GET' && req.url.startsWith('/api/agent/jobs')) {
   if (!deviceId) {
     return sendJsonResponse(res, 400, { error: 'missing_deviceId' });
   }
+const normalizedDeviceId = normalizeDeviceId(deviceId);
 
-  const job = diagnosticJobs.find(j =>
-    j.deviceId === deviceId &&
-    j.status === 'pending'
-  );
+touchAgentDevice(normalizedDeviceId, {
+  state: 'polling'
+});
+const job = diagnosticJobs.find(j =>
+  normalizeDeviceId(j.deviceId) === normalizedDeviceId &&
+  j.status === 'pending'
+);
 
   if (!job) {
     return sendJsonResponse(res, 200, { job: null });
@@ -1828,20 +1895,31 @@ if (req.method === 'POST' && req.url === '/api/agent/jobs/result') {
     return sendJsonResponse(res, 404, { error: 'job_not_found' });
   }
 
-  job.status = 'completed';
-  job.result = body.result;
-  job.completedAt = new Date().toISOString();
+job.status = 'completed';
+job.result = body.result;
+job.completedAt = new Date().toISOString();
 
-  return sendJsonResponse(res, 200, { success: true });
+touchAgentDevice(job.deviceId, {
+  state: 'completed',
+  lastJobId: job.id,
+  lastResultAt: job.completedAt
+});
+
+return sendJsonResponse(res, 200, { success: true });
 }
-
+// Agent devices list
+if (req.method === 'GET' && req.url.startsWith('/api/agent/devices')) {
+  return sendJsonResponse(res, 200, {
+    devices: getOnlineDevices()
+  });
+}
 // Teams: get latest diagnostic result
 if (req.method === 'GET' && req.url.startsWith('/api/diagnostics/latest')) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
-  const deviceId = url.searchParams.get('deviceId') || 'mortadha-pc';
+const deviceId = normalizeDeviceId(url.searchParams.get('deviceId'));
 
   const jobs = diagnosticJobs
-    .filter(j => j.deviceId === deviceId)
+  .filter(j => normalizeDeviceId(j.deviceId) === deviceId)
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
   return sendJsonResponse(res, 200, {
