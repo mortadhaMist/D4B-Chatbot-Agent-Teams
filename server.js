@@ -179,7 +179,144 @@ function getDiagnosticRequest(text) {
       label: 'diagnostic système'
     };
   }
+  if (
+    normalized.includes('diagnostic wifi') ||
+    normalized.includes('diagnostic wi-fi') ||
+    normalized.includes('probleme wifi') ||
+    normalized.includes('probleme wi-fi') ||
+    normalized.includes('wifi diagnostics')
+  ) {
+    return {
+      type: 'wifi_diagnostics',
+      label: 'diagnostic Wi-Fi'
+    };
+  }
 
+  if (
+    normalized.includes('diagnostic dns') ||
+    normalized.includes('probleme dns') ||
+    normalized.includes('resolution dns') ||
+    normalized.includes('dns diagnostics')
+  ) {
+    return {
+      type: 'dns_diagnostics',
+      label: 'diagnostic DNS'
+    };
+  }
+
+  if (
+    normalized.includes('diagnostic domaine') ||
+    normalized.includes('probleme domaine') ||
+    normalized.includes('active directory') ||
+    normalized.includes('gpresult') ||
+    normalized.includes('gpo') ||
+    normalized.includes('domain diagnostics')
+  ) {
+    return {
+      type: 'domain_diagnostics',
+      label: 'diagnostic domaine / Active Directory'
+    };
+  }
+
+  if (
+    normalized.includes('windows update') ||
+    normalized.includes('mise a jour windows') ||
+    normalized.includes('diagnostic mise a jour') ||
+    normalized.includes('update windows')
+  ) {
+    return {
+      type: 'windows_update',
+      label: 'diagnostic Windows Update'
+    };
+  }
+
+  if (
+    normalized.includes('performance') ||
+    normalized.includes('pc lent') ||
+    normalized.includes('ordinateur lent') ||
+    normalized.includes('cpu') ||
+    normalized.includes('memoire') ||
+    normalized.includes('ram')
+  ) {
+    return {
+      type: 'performance_diagnostics',
+      label: 'diagnostic performance'
+    };
+  }
+
+  if (
+    normalized.includes('demarrage') ||
+    normalized.includes('startup') ||
+    normalized.includes('programmes au demarrage') ||
+    normalized.includes('diagnostic startup')
+  ) {
+    return {
+      type: 'startup_diagnostics',
+      label: 'diagnostic démarrage'
+    };
+  }
+
+  if (
+    normalized.includes('diagnostic services') ||
+    normalized.includes('services windows') ||
+    normalized.includes('service arrete') ||
+    normalized.includes('services automatiques')
+  ) {
+    return {
+      type: 'service_diagnostics',
+      label: 'diagnostic services Windows'
+    };
+  }
+
+  if (
+    normalized.includes('session utilisateur') ||
+    normalized.includes('diagnostic utilisateur') ||
+    normalized.includes('compte utilisateur') ||
+    normalized.includes('user session')
+  ) {
+    return {
+      type: 'user_session',
+      label: 'diagnostic session utilisateur'
+    };
+  }
+
+  if (
+    normalized.includes('defender') ||
+    normalized.includes('antivirus') ||
+    normalized.includes('protection windows') ||
+    normalized.includes('windows security')
+  ) {
+    return {
+      type: 'defender_security',
+      label: 'diagnostic Microsoft Defender'
+    };
+  }
+
+  if (
+    normalized.includes('remote access') ||
+    normalized.includes('acces distant') ||
+    normalized.includes('bureau a distance') ||
+    normalized.includes('rdp') ||
+    normalized.includes('winrm')
+  ) {
+    return {
+      type: 'remote_access',
+      label: 'diagnostic accès distant'
+    };
+  }
+
+  if (
+    normalized.includes('crash application') ||
+    normalized.includes('application plante') ||
+    normalized.includes('application crash') ||
+    normalized.includes('logs application') ||
+    normalized.includes('journal application')
+  ) {
+    return {
+      type: 'app_crash_logs',
+      label: 'diagnostic erreurs application'
+    };
+  }
   return null;
 }
 
