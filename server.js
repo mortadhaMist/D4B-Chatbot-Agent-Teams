@@ -64,7 +64,13 @@ function formatOnlineDevicesList() {
   }
 
   return devices
-    .map(device => `- ${device.deviceId} — vu à ${device.lastSeenAt}`)
+    .map(device => {
+      const username = device.username ? ` — utilisateur ${device.username}` : '';
+      const ip = device.ip ? ` — IP ${device.ip}` : '';
+      const state = device.state ? ` — état ${device.state}` : '';
+
+      return `- ${device.deviceId}${username}${ip}${state} — vu à ${device.lastSeenAt}`;
+    })
     .join('\n');
 }
 
@@ -87,7 +93,31 @@ function extractDeviceIdFromText(text) {
 
   return null;
 }
+function findDeviceByIdOrIp(value) {
+  const target = String(value || '').trim().toUpperCase();
 
+  if (!target) return null;
+
+  for (const device of registeredAgents.values()) {
+    const deviceId = String(device.deviceId || '').toUpperCase();
+    const hostname = String(device.hostname || '').toUpperCase();
+    const ip = String(device.ip || '').toUpperCase();
+    const ips = Array.isArray(device.ips)
+      ? device.ips.map(x => String(x).toUpperCase())
+      : [];
+
+    if (
+      deviceId === target ||
+      hostname === target ||
+      ip === target ||
+      ips.includes(target)
+    ) {
+      return device;
+    }
+  }
+
+  return null;
+}
 function getDiagnosticRequest(text) {
   const normalized = normalizeTextForIntent(text);
 if (
@@ -604,8 +634,7 @@ try {
         return;
       }
       try {
-        await context.sendActivity('Sorry, the Teams bot encountered an authentication error. Please verify the App ID and App Password.');
-      } catch (sendError) {
+await context.sendActivity(`Erreur interne du bot : ${error?.message || String(error)}`);      } catch (sendError) {
         console.error('Failed to send onTurnError message:', sendError);
       }
     };
@@ -2016,7 +2045,7 @@ function normalizeIdentity(value) {
     .toLowerCase()
     .replace(/^azuread\\/, '')
     .replace(/^domain\\/, '')
-    .replace(/\s+/g, '');
+    .replace(/[^a-z0-9]/g, '');
 }
 
 function findDeviceForTeamsUser(userEmail, userName) {
@@ -2611,7 +2640,7 @@ async function handleApi(req, res) {
 // PC agent: get next diagnostic job
 if (req.method === 'GET' && req.url.startsWith('/api/agent/jobs')) {
   const token = req.headers['x-agent-token'];
-
+const hostname = url.searchParams.get('hostname');
   if (!process.env.AGENT_TOKEN || token !== process.env.AGENT_TOKEN) {
     return sendJsonResponse(res, 401, { error: 'unauthorized_agent' });
   }
@@ -2631,7 +2660,7 @@ touchAgentDevice(normalizedDeviceId, {
   ip,
   ips: ip ? [ip] : [],
   username,
-  hostname: normalizedDeviceId
+  hostname: hostname || normalizedDeviceId
 });
 const job = diagnosticJobs.find(j =>
   normalizeDeviceId(j.deviceId) === normalizedDeviceId &&
