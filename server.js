@@ -1845,6 +1845,79 @@ function formatRemoteAccessResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+
+function extractRegexValue(text, regex, fallback = 'Non détecté') {
+  const match = String(text || '').match(regex);
+  return match && match[1] ? match[1].trim() : fallback;
+}
+
+function formatSpeedtestResult(result) {
+  const speedtest = findCommand(result, 'speedtest');
+
+  const output = String(speedtest?.stdout || speedtest?.stderr || speedtest?.error || '');
+
+  const server = extractRegexValue(output, /Server:\s*(.+?)(?:\s+\(id:|\n|$)/i);
+  const isp = extractRegexValue(output, /ISP:\s*(.+?)(?:\n|$)/i);
+
+  const idleLatency = extractRegexValue(output, /Idle Latency:\s*([\d.,]+\s*ms)/i);
+  const download = extractRegexValue(output, /Download:\s*([\d.,]+\s*Mbps)/i);
+  const upload = extractRegexValue(output, /Upload:\s*([\d.,]+\s*Mbps)/i);
+  const packetLoss = extractRegexValue(output, /Packet Loss:\s*([\d.,]+%)/i);
+  const resultUrl = extractRegexValue(output, /Result URL:\s*(https?:\/\/\S+)/i);
+
+  const conclusion = [];
+
+  const downloadNumber = Number(String(download).replace(',', '.').replace(/[^\d.]/g, ''));
+  const uploadNumber = Number(String(upload).replace(',', '.').replace(/[^\d.]/g, ''));
+  const latencyNumber = Number(String(idleLatency).replace(',', '.').replace(/[^\d.]/g, ''));
+
+  if (Number.isFinite(downloadNumber) && downloadNumber >= 50) {
+    conclusion.push('Le débit descendant est bon.');
+  } else if (Number.isFinite(downloadNumber)) {
+    conclusion.push('Le débit descendant est faible ou moyen : à vérifier selon le besoin utilisateur.');
+  }
+
+  if (Number.isFinite(uploadNumber) && uploadNumber >= 20) {
+    conclusion.push('Le débit montant est bon.');
+  } else if (Number.isFinite(uploadNumber)) {
+    conclusion.push('Le débit montant est faible ou moyen : à vérifier selon le besoin utilisateur.');
+  }
+
+  if (Number.isFinite(latencyNumber) && latencyNumber <= 30) {
+    conclusion.push('La latence est faible, la connexion semble réactive.');
+  } else if (Number.isFinite(latencyNumber)) {
+    conclusion.push('La latence est élevée : possible lenteur réseau ou Wi-Fi.');
+  }
+
+  if (packetLoss === '0.0%' || packetLoss === '0%') {
+    conclusion.push('Aucune perte de paquets détectée.');
+  }
+
+  if (!conclusion.length) {
+    conclusion.push('Le test de débit a été exécuté. Vérifier les valeurs de débit, latence et perte de paquets.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Test de débit Internet terminé'),
+    ``,
+    `🌍 Connexion Internet`,
+    `- Fournisseur : ${isp}`,
+    `- Serveur de test : ${server}`,
+    ``,
+    `📊 Résultats Speedtest`,
+    `- Débit descendant : ${download}`,
+    `- Débit montant : ${upload}`,
+    `- Latence : ${idleLatency}`,
+    `- Perte de paquets : ${packetLoss}`,
+    ``,
+    `🔗 Résultat Ookla`,
+    resultUrl !== 'Non détecté' ? `- ${resultUrl}` : '- Non détecté',
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
+
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -1853,6 +1926,9 @@ function formatDiagnosticResultForTeams(result) {
   switch (result.type) {
     case 'network_basic':
       return formatNetworkBasicResult(result);
+      
+case 'speedtest_cli':
+  return formatSpeedtestResult(result);
 
 case 'defender_security':
   return formatDefenderSecurityResult(result);
