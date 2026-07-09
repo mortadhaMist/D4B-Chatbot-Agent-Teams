@@ -825,9 +825,11 @@ if (diagnosticRequest) {
 
   if (!targetDeviceId) {
     await context.sendActivity(
-      `Je ne sais pas encore sur quel PC lancer ce diagnostic.\n\n` +
-      `Postes connectés :\n${formatOnlineDevicesList()}\n\n` +
-      `Vous pouvez écrire par exemple : diagnostic wifi sur TN-D4B-PC2GWP08`
+`Je ne sais pas encore sur quel PC lancer ce diagnostic.\n\n` +
+`Utilisateur Teams détecté : ${userName || 'Non détecté'}\n` +
+`Email Teams détecté : ${userEmail || 'Non détecté'}\n\n` +
+`Postes connectés :\n${formatOnlineDevicesList()}\n\n` +
+`Vous pouvez écrire par exemple : diagnostic wifi sur TN-D4B-PC2GWP08`
     );
 
     await next();
@@ -2085,10 +2087,95 @@ function extractDocxText(buffer) {
 function normalizeIdentity(value) {
   return String(value || '')
     .trim()
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
     .toLowerCase()
     .replace(/^azuread\\/, '')
     .replace(/^domain\\/, '')
     .replace(/[^a-z0-9]/g, '');
+}
+
+function identityWords(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^azuread\\/i, '')
+    .replace(/^domain\\/i, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map(x => x.trim())
+    .filter(x => x.length >= 2);
+}
+
+function identitiesLookSame(a, b) {
+  const compactA = normalizeIdentity(a);
+  const compactB = normalizeIdentity(b);
+
+  if (!compactA || !compactB) return false;
+
+  if (compactA === compactB) return true;
+  if (compactA.includes(compactB)) return true;
+  if (compactB.includes(compactA)) return true;
+
+  const wordsA = identityWords(a);
+  const wordsB = identityWords(b);
+
+  if (!wordsA.length || !wordsB.length) return false;
+
+  const hits = wordsA.filter(wordA =>
+    wordsB.some(wordB =>
+      wordA === wordB ||
+      wordA.includes(wordB) ||
+      wordB.includes(wordA)
+    )
+  );
+
+  return hits.length >= 2;
+}
+
+function findDeviceForTeamsUser(userEmail, userName) {
+  const onlineDevices = getOnlineDevices();
+
+  const emailPrefix = String(userEmail || '').split('@')[0];
+
+  const candidates = [
+    userName,
+    userEmail,
+    emailPrefix
+  ].filter(Boolean);
+
+  const matches = onlineDevices.filter(device => {
+    const deviceValues = [
+      device.username,
+      device.windowsUsername,
+      device.hostname,
+      device.deviceId
+    ].filter(Boolean);
+
+    return candidates.some(candidate =>
+      deviceValues.some(deviceValue =>
+        identitiesLookSame(candidate, deviceValue)
+      )
+    );
+  });
+
+  console.log('Device auto-match debug:', {
+    userEmail,
+    userName,
+    candidates,
+    onlineDevices: onlineDevices.map(device => ({
+      deviceId: device.deviceId,
+      username: device.username,
+      hostname: device.hostname,
+      ip: device.ip
+    })),
+    matches: matches.map(device => device.deviceId)
+  });
+
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  return null;
 }
 
 function findDeviceForTeamsUser(userEmail, userName) {
