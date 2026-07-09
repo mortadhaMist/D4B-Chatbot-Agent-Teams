@@ -90,7 +90,87 @@ function extractDeviceIdFromText(text) {
 
 function getDiagnosticRequest(text) {
   const normalized = normalizeTextForIntent(text);
+if (
+  normalized.includes('speedtest') ||
+  normalized.includes('test debit') ||
+  normalized.includes('test internet') ||
+  normalized.includes('vitesse internet')
+) {
+  return {
+    type: 'speedtest_cli',
+    label: 'test de débit Internet'
+  };
+}
 
+if (
+  normalized.includes('flush dns') ||
+  normalized.includes('vider dns') ||
+  normalized.includes('cache dns') ||
+  normalized.includes('probleme dns cache')
+) {
+  return {
+    type: 'flush_dns',
+    label: 'nettoyage du cache DNS'
+  };
+}
+
+if (
+  normalized.includes('nettoyer file impression') ||
+  normalized.includes('vider file impression') ||
+  normalized.includes('print queue') ||
+  normalized.includes('file imprimante bloquee')
+) {
+  return {
+    type: 'clean_print_queue',
+    label: 'nettoyage de la file impression'
+  };
+}
+
+if (
+  normalized.includes('port switch') ||
+  normalized.includes('lldp') ||
+  normalized.includes('switch port') ||
+  normalized.includes('trouver port reseau')
+) {
+  return {
+    type: 'find_switch_port',
+    label: 'détection du port switch'
+  };
+}
+
+if (
+  normalized.includes('nettoyage temporaire') ||
+  normalized.includes('nettoyer fichiers temporaires') ||
+  normalized.includes('cleanup temp') ||
+  normalized.includes('liberer espace')
+) {
+  return {
+    type: 'temp_cleanup_light',
+    label: 'nettoyage temporaire léger'
+  };
+}
+
+if (
+  normalized.includes('installer chrome') ||
+  normalized.includes('installation chrome') ||
+  normalized.includes('google chrome')
+) {
+  return {
+    type: 'install_chrome',
+    label: 'installation Google Chrome'
+  };
+}
+
+if (
+  normalized.includes('installer teams') ||
+  normalized.includes('installation teams') ||
+  normalized.includes('microsoft teams')
+) {
+  return {
+    type: 'install_teams',
+    label: 'installation Microsoft Teams'
+  };
+}
   if (
     normalized.includes('diagnostic reseau avance') ||
     normalized.includes('diagnostic avance reseau') ||
@@ -695,15 +775,24 @@ if (diagnosticRequest) {
   const requestedDeviceId = extractDeviceIdFromText(text);
   const onlineDevices = getOnlineDevices();
 
+  const requestedDevice = requestedDeviceId
+    ? findDeviceByIdOrIp(requestedDeviceId)
+    : null;
+
+  const userDevice = !requestedDevice
+    ? findDeviceForTeamsUser(userEmail, userName)
+    : null;
+
   const targetDeviceId =
-    requestedDeviceId ||
+    requestedDevice?.deviceId ||
+    userDevice?.deviceId ||
     (onlineDevices.length === 1 ? onlineDevices[0].deviceId : null);
 
   if (!targetDeviceId) {
     await context.sendActivity(
-      `Je peux lancer un ${diagnosticRequest.label}, mais je dois savoir sur quel PC.\n\n` +
-      `Écrivez par exemple : ${text} sur TN-D4B-PC2GWP08\n\n` +
-      `Postes connectés :\n${formatOnlineDevicesList()}`
+      `Je ne sais pas encore sur quel PC lancer ce diagnostic.\n\n` +
+      `Postes connectés :\n${formatOnlineDevicesList()}\n\n` +
+      `Vous pouvez écrire par exemple : diagnostic wifi sur TN-D4B-PC2GWP08`
     );
 
     await next();
@@ -716,8 +805,7 @@ if (diagnosticRequest) {
   });
 
   await context.sendActivity(
-    `Je peux lancer un ${diagnosticRequest.label} sur le poste ${targetDeviceId}.\n\n` +
-    `Type technique : ${diagnosticRequest.type}\n\n` +
+    `Je vais lancer un ${diagnosticRequest.label} sur le poste ${targetDeviceId}.\n\n` +
     `Confirmez-vous ? Répondez "oui".`
   );
 
@@ -1922,7 +2010,48 @@ function extractDocxText(buffer) {
   }
   return '';
 }
+function normalizeIdentity(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^azuread\\/, '')
+    .replace(/^domain\\/, '')
+    .replace(/\s+/g, '');
+}
 
+function findDeviceForTeamsUser(userEmail, userName) {
+  const onlineDevices = getOnlineDevices();
+
+  const emailPrefix = String(userEmail || '').split('@')[0];
+  const candidates = [
+    normalizeIdentity(userName),
+    normalizeIdentity(emailPrefix),
+    normalizeIdentity(userEmail)
+  ].filter(Boolean);
+
+  const matches = onlineDevices.filter(device => {
+    const deviceUsername = normalizeIdentity(device.username);
+    const deviceHostname = normalizeIdentity(device.hostname);
+    const deviceId = normalizeIdentity(device.deviceId);
+
+    return candidates.some(candidate =>
+      candidate &&
+      (
+        deviceUsername === candidate ||
+        deviceUsername.includes(candidate) ||
+        candidate.includes(deviceUsername) ||
+        deviceHostname === candidate ||
+        deviceId === candidate
+      )
+    );
+  });
+
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  return null;
+}
 function loadKnowledgeIndex() {
   ensureKbDir();
   KNOWLEDGE = [];
@@ -2489,6 +2618,8 @@ if (req.method === 'GET' && req.url.startsWith('/api/agent/jobs')) {
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const deviceId = url.searchParams.get('deviceId');
+  const ip = url.searchParams.get('ip');
+const username = url.searchParams.get('username');
 
   if (!deviceId) {
     return sendJsonResponse(res, 400, { error: 'missing_deviceId' });
@@ -2496,7 +2627,11 @@ if (req.method === 'GET' && req.url.startsWith('/api/agent/jobs')) {
 const normalizedDeviceId = normalizeDeviceId(deviceId);
 
 touchAgentDevice(normalizedDeviceId, {
-  state: 'polling'
+  state: 'polling',
+  ip,
+  ips: ip ? [ip] : [],
+  username,
+  hostname: normalizedDeviceId
 });
 const job = diagnosticJobs.find(j =>
   normalizeDeviceId(j.deviceId) === normalizedDeviceId &&
