@@ -2639,42 +2639,54 @@ async function handleApi(req, res) {
     }
 // PC agent: get next diagnostic job
 if (req.method === 'GET' && req.url.startsWith('/api/agent/jobs')) {
-  const token = req.headers['x-agent-token'];
-const hostname = url.searchParams.get('hostname');
-  if (!process.env.AGENT_TOKEN || token !== process.env.AGENT_TOKEN) {
-    return sendJsonResponse(res, 401, { error: 'unauthorized_agent' });
+  try {
+    const token = req.headers['x-agent-token'];
+
+    if (!process.env.AGENT_TOKEN || token !== process.env.AGENT_TOKEN) {
+      return sendJsonResponse(res, 401, { error: 'unauthorized_agent' });
+    }
+
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+
+    const deviceId = url.searchParams.get('deviceId');
+    const hostname = url.searchParams.get('hostname');
+    const ip = url.searchParams.get('ip');
+    const username = url.searchParams.get('username');
+
+    if (!deviceId) {
+      return sendJsonResponse(res, 400, { error: 'missing_deviceId' });
+    }
+
+    const normalizedDeviceId = normalizeDeviceId(deviceId);
+
+    touchAgentDevice(normalizedDeviceId, {
+      state: 'polling',
+      ip: ip || null,
+      ips: ip ? [ip] : [],
+      username: username || null,
+      hostname: hostname || normalizedDeviceId
+    });
+
+    const job = diagnosticJobs.find(j =>
+      normalizeDeviceId(j.deviceId) === normalizedDeviceId &&
+      j.status === 'pending'
+    );
+
+    if (!job) {
+      return sendJsonResponse(res, 200, { job: null });
+    }
+
+    job.status = 'running';
+    job.startedAt = new Date().toISOString();
+
+    return sendJsonResponse(res, 200, { job });
+  } catch (err) {
+    console.error('/api/agent/jobs failed:', err);
+    return sendJsonResponse(res, 500, {
+      error: 'agent_jobs_failed',
+      message: err.message || String(err)
+    });
   }
-
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const deviceId = url.searchParams.get('deviceId');
-  const ip = url.searchParams.get('ip');
-const username = url.searchParams.get('username');
-
-  if (!deviceId) {
-    return sendJsonResponse(res, 400, { error: 'missing_deviceId' });
-  }
-const normalizedDeviceId = normalizeDeviceId(deviceId);
-
-touchAgentDevice(normalizedDeviceId, {
-  state: 'polling',
-  ip,
-  ips: ip ? [ip] : [],
-  username,
-  hostname: hostname || normalizedDeviceId
-});
-const job = diagnosticJobs.find(j =>
-  normalizeDeviceId(j.deviceId) === normalizedDeviceId &&
-  j.status === 'pending'
-);
-
-  if (!job) {
-    return sendJsonResponse(res, 200, { job: null });
-  }
-
-  job.status = 'running';
-  job.startedAt = new Date().toISOString();
-
-  return sendJsonResponse(res, 200, { job });
 }
 
 // PC agent: send diagnostic result
