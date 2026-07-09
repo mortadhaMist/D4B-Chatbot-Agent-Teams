@@ -810,18 +810,35 @@ if (diagnosticRequest) {
   const requestedDeviceId = extractDeviceIdFromText(text);
   const onlineDevices = getOnlineDevices();
 
-  const requestedDevice = requestedDeviceId
-    ? findDeviceByIdOrIp(requestedDeviceId)
-    : null;
+const requestedDevice = requestedDeviceId
+  ? findDeviceByIdOrIp(requestedDeviceId)
+  : null;
 
-  const userDevice = !requestedDevice
-    ? findDeviceForTeamsUser(userEmail, userName)
-    : null;
+const normalizedTeamsName = normalizeIdentity(userName);
+const normalizedTeamsEmailPrefix = normalizeIdentity(String(userEmail || '').split('@')[0]);
 
-  const targetDeviceId =
-    requestedDevice?.deviceId ||
-    userDevice?.deviceId ||
-    (onlineDevices.length === 1 ? onlineDevices[0].deviceId : null);
+const userDeviceByUsername = onlineDevices.find(device => {
+  const deviceUsername = normalizeIdentity(device.username);
+  const deviceWindowsUsername = normalizeIdentity(device.windowsUsername);
+
+  return (
+    deviceUsername === normalizedTeamsName ||
+    deviceWindowsUsername === normalizedTeamsName ||
+    normalizedTeamsName.includes(deviceUsername) ||
+    deviceUsername.includes(normalizedTeamsName) ||
+    deviceUsername === normalizedTeamsEmailPrefix ||
+    deviceWindowsUsername === normalizedTeamsEmailPrefix
+  );
+});
+
+const userDevice = !requestedDevice
+  ? (userDeviceByUsername || findDeviceForTeamsUser(userEmail, userName))
+  : null;
+
+const targetDeviceId =
+  requestedDevice?.deviceId ||
+  userDevice?.deviceId ||
+  (onlineDevices.length === 1 ? onlineDevices[0].deviceId : null);
 
   if (!targetDeviceId) {
     await context.sendActivity(
