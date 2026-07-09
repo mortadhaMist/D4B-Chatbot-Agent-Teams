@@ -435,15 +435,19 @@ function isYesConfirmation(text) {
   return /^(oui|yes|ok|confirme|je confirme|lance|lancer)$/i.test(normalized);
 }
 
-function createDiagnosticJob(deviceId, type, requestedBy) {
+function createDiagnosticJob(deviceId, type, requestedBy, conversationReference = null) {
   const job = {
     id: `JOB-${Date.now()}`,
     deviceId,
     type,
     requestedBy,
+    conversationReference,
     status: 'pending',
     createdAt: new Date().toISOString(),
-    result: null
+    startedAt: null,
+    completedAt: null,
+    result: null,
+    resultSentToTeams: false
   };
 
   diagnosticJobs.push(job);
@@ -594,8 +598,7 @@ function appendTechnicienPromptOnce(replyText) {
 let teamsAdapter = null;
 let teamsBotHandler = null;
 try {
-  const { BotFrameworkAdapter, TeamsActivityHandler, TeamsInfo } = require('botbuilder');
-  
+const { BotFrameworkAdapter, TeamsActivityHandler, TeamsInfo, TurnContext } = require('botbuilder');  
   // SÃ©curisation de la rÃ©cupÃ©ration des variables d'environnement
   const microsoftAppId = process.env.MICROSOFT_APP_ID ? String(process.env.MICROSOFT_APP_ID).trim() : null;
   const microsoftAppPassword = process.env.MICROSOFT_APP_PASSWORD ? String(process.env.MICROSOFT_APP_PASSWORD).trim() : null;
@@ -738,20 +741,23 @@ const pendingDiagnostic = pendingDiagnostics.get(teamsConversationKey);
 if (pendingDiagnostic && isYesConfirmation(text)) {
   const deviceId = pendingDiagnostic.deviceId;
 
-  const job = createDiagnosticJob(
-    deviceId,
-    pendingDiagnostic.type,
-    userEmail || userName
-  );
+const conversationReference = TurnContext.getConversationReference(context.activity);
+
+const job = createDiagnosticJob(
+  deviceId,
+  pendingDiagnostic.type,
+  userEmail || userName,
+  conversationReference
+);
 
   pendingDiagnostics.delete(teamsConversationKey);
   lastDiagnosticDeviceByConversation.set(teamsConversationKey, deviceId);
 
-  const replyText =
-    `Diagnostic lancé sur le poste : ${deviceId}\n\n` +
-    `Type : ${pendingDiagnostic.label}\n` +
-    `ID du job : ${job.id}\n\n` +
-    `Attendez 10 à 20 secondes, puis écrivez : résultat diagnostic`;
+const replyText =
+  `Diagnostic lancé sur le poste : ${deviceId}\n\n` +
+  `Type : ${pendingDiagnostic.label}\n` +
+  `ID du job : ${job.id}\n\n` +
+  `Je vous enverrai automatiquement le résultat dès que l’agent aura terminé.`;
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
   await context.sendActivity(replyText);
@@ -1874,6 +1880,43 @@ case 'user_session':
       ].join('\n\n').slice(0, 7000);
   }
 }
+
+async function sendDiagnosticResultToTeams(job) {
+  if (!job || !job.conversationReference || !job.result || !teamsAdapter) {
+    return false;
+  }
+
+  if (job.resultSentToTeams) {
+    return true;
+  }
+
+  try {
+    try {
+      const { MicrosoftAppCredentials } = require('botframework-connector');
+
+      if (job.conversationReference.serviceUrl) {
+        MicrosoftAppCredentials.trustServiceUrl(job.conversationReference.serviceUrl);
+      }
+    } catch (trustError) {
+      console.warn('Could not trust Teams serviceUrl:', trustError?.message || trustError);
+    }
+
+    const formattedResult = formatDiagnosticResultForTeams(job.result);
+
+    await teamsAdapter.continueConversation(job.conversationReference, async (turnContext) => {
+      await turnContext.sendActivity(formattedResult);
+    });
+
+    job.resultSentToTeams = true;
+    job.resultSentAt = new Date().toISOString();
+
+    return true;
+  } catch (err) {
+    console.error('Failed to send diagnostic result to Teams:', err);
+    return false;
+  }
+}
+
 //Récupérer l’ID du site SharePoint
 
 async function getSharePointSiteId() {
@@ -2714,8 +2757,12 @@ touchAgentDevice(job.deviceId, {
   lastResultAt: job.completedAt
 });
 
-return sendJsonResponse(res, 200, { success: true });
-}
+const sentToTeams = await sendDiagnosticResultToTeams(job);
+
+return sendJsonResponse(res, 200, {
+  success: true,
+  sentToTeams
+});
 // Agent devices list
 if (req.method === 'GET' && req.url.startsWith('/api/agent/devices')) {
   return sendJsonResponse(res, 200, {
