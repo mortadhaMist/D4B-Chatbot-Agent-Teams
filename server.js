@@ -2763,6 +2763,8 @@ return sendJsonResponse(res, 200, {
   success: true,
   sentToTeams
 });
+}
+
 // Agent devices list
 if (req.method === 'GET' && req.url.startsWith('/api/agent/devices')) {
   return sendJsonResponse(res, 200, {
