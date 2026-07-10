@@ -1562,13 +1562,25 @@ function formatRepairActionResult(result, title, successMessage, warningMessage 
   const skipped = outputs.filter(item => item.skipped);
 
   const lines = outputs.map((item, index) => {
+    const outputText = item.stdout
+      ? cleanDiagnosticText(item.stdout, 700)
+      : null;
+
+    const stderrText = item.stderr
+      ? cleanDiagnosticText(item.stderr, 700)
+      : null;
+
+    const errorText = item.error
+      ? cleanDiagnosticText(item.error, 700)
+      : null;
+
     return [
       `${index + 1}. ${item.label || 'Action'}`,
       `   Statut : ${commandStatusIcon(item)}`,
       item.skipped ? `   Ignoré : droits administrateur requis` : null,
-      item.stdout ? `   Sortie : ${cleanDiagnosticText(item.stdout, 700)}` : null,
-      item.stderr ? `   Erreur : ${cleanDiagnosticText(item.stderr, 700)}` : null,
-      item.error ? `   Erreur : ${cleanDiagnosticText(item.error, 700)}` : null
+      outputText ? `   Sortie : ${outputText}` : null,
+      stderrText ? `   Erreur : ${stderrText}` : null,
+      errorText ? `   Erreur : ${errorText}` : null
     ].filter(Boolean).join('\n');
   });
 
@@ -2371,6 +2383,210 @@ function formatSpeedtestResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+function batteryStatusLabel(value) {
+  const code = Number(value);
+
+  const labels = {
+    1: 'Déchargement',
+    2: 'Branchée / en charge ou secteur',
+    3: 'Chargée complètement',
+    4: 'Batterie faible',
+    5: 'Batterie critique',
+    6: 'En charge',
+    7: 'En charge - capacité élevée',
+    8: 'En charge - capacité faible',
+    9: 'En charge - critique',
+    10: 'Inconnu',
+    11: 'Partiellement chargée'
+  };
+
+  return labels[code] || `Code ${value || 'inconnu'}`;
+}
+
+function formatBatteryRuntime(value) {
+  const minutes = Number(value);
+
+  if (!Number.isFinite(minutes)) return 'Non détecté';
+
+  // Windows sometimes returns 71582788 when runtime is unknown.
+  if (minutes > 100000) return 'Non estimé par Windows';
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = Math.round(minutes % 60);
+
+  if (hours <= 0) return `${remainingMinutes} min`;
+
+  return `${hours} h ${remainingMinutes} min`;
+}
+
+function formatBatteryHealthResult(result) {
+  const batteryCommand = findCommand(result, 'Win32_Battery');
+  const reportCommand = findCommand(result, 'batteryreport');
+
+  const battery = safeJsonParseAny(batteryCommand?.stdout);
+  const reportOutput = String(reportCommand?.stdout || reportCommand?.stderr || reportCommand?.error || '');
+
+  const reportPath =
+    extractRegexValue(reportOutput, /(C:\\[^\r\n]+battery-report\.html)/i) ||
+    'Non détecté';
+
+  const hasBattery = !!battery;
+
+  const charge = hasBattery
+    ? `${battery.EstimatedChargeRemaining ?? 'Non détecté'}%`
+    : 'Non détecté';
+
+  const status = hasBattery
+    ? batteryStatusLabel(battery.BatteryStatus)
+    : 'Non détecté';
+
+  const runtime = hasBattery
+    ? formatBatteryRuntime(battery.EstimatedRunTime)
+    : 'Non détecté';
+
+  const conclusion = [];
+
+  if (!hasBattery) {
+    conclusion.push('Aucune batterie détectée. Le poste est probablement un PC fixe ou les informations batterie ne sont pas accessibles.');
+  } else {
+    const chargeNumber = Number(battery.EstimatedChargeRemaining);
+
+    if (Number.isFinite(chargeNumber) && chargeNumber >= 80) {
+      conclusion.push('Le niveau de batterie est bon.');
+    } else if (Number.isFinite(chargeNumber) && chargeNumber >= 30) {
+      conclusion.push('Le niveau de batterie est moyen.');
+    } else if (Number.isFinite(chargeNumber)) {
+      conclusion.push('Le niveau de batterie est faible : brancher le chargeur ou vérifier l’état de la batterie.');
+    }
+
+    conclusion.push(`État Windows de la batterie : ${status}.`);
+  }
+
+  if (reportPath !== 'Non détecté') {
+    conclusion.push('Un rapport batterie HTML a été généré localement sur le poste.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic batterie terminé'),
+    ``,
+    `🔋 Batterie`,
+    `- Nom : ${battery?.Name || 'Non détecté'}`,
+    `- Niveau estimé : ${charge}`,
+    `- État : ${status}`,
+    `- Autonomie estimée : ${runtime}`,
+    ``,
+    `📄 Rapport batterie`,
+    `- Statut : ${commandStatusIcon(reportCommand)}`,
+    `- Chemin local : ${reportPath}`,
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
+function windowsServiceStatusLabel(status) {
+  const value = String(status || '').toLowerCase();
+
+  if (value === 'running') return '🟢 En cours';
+  if (value === 'stopped') return '🔴 Arrêté';
+  if (value === 'paused') return '🟠 En pause';
+
+  return status || 'Non détecté';
+}
+
+function windowsServiceStartTypeLabel(startType) {
+  const value = String(startType || '').toLowerCase();
+
+  if (value === 'automatic') return 'Automatique';
+  if (value === 'manual') return 'Manuel';
+  if (value === 'disabled') return 'Désactivé';
+
+  return startType || 'Non détecté';
+}
+
+function formatWindowsDate(value) {
+  if (!value) return 'Non détecté';
+
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleDateString('fr-FR');
+}
+
+function formatWindowsUpdateResult(result) {
+  const servicesCommand = findCommand(result, 'Get-Service wuauserv');
+  const hotfixCommand = findCommand(result, 'Get-HotFix');
+  const scanCommand = findCommand(result, 'UsoClient StartScan');
+
+  const services = asArray(safeJsonParseAny(servicesCommand?.stdout));
+  const hotfixes = asArray(safeJsonParseAny(hotfixCommand?.stdout));
+
+  const wuauserv = services.find(service => service.Name === 'wuauserv');
+  const bits = services.find(service => service.Name === 'bits');
+  const cryptsvc = services.find(service => service.Name === 'cryptsvc');
+
+  const scanOutput = cleanDiagnosticText(
+    scanCommand?.stdout || scanCommand?.stderr || scanCommand?.error,
+    500
+  );
+
+  const conclusion = [];
+
+  if (wuauserv && String(wuauserv.Status).toLowerCase() === 'running') {
+    conclusion.push('Le service Windows Update est en cours d’exécution.');
+  } else {
+    conclusion.push('Le service Windows Update n’est pas en cours d’exécution ou n’a pas été détecté.');
+  }
+
+  if (bits && String(bits.Status).toLowerCase() !== 'running') {
+    conclusion.push('Le service BITS est arrêté. Ce n’est pas toujours bloquant, mais il peut impacter le téléchargement des mises à jour.');
+  }
+
+  if (cryptsvc && String(cryptsvc.Status).toLowerCase() === 'running') {
+    conclusion.push('Le service Cryptographic Services est actif.');
+  }
+
+  if (hotfixes.length) {
+    conclusion.push(`${hotfixes.length} correctif(s) récent(s) trouvé(s).`);
+  } else {
+    conclusion.push('Aucun correctif récent détecté dans la sortie récupérée.');
+  }
+
+  if (scanCommand && !scanCommand.error) {
+    conclusion.push('Un scan Windows Update a été déclenché.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic Windows Update terminé'),
+    ``,
+
+    `🔄 Services Windows Update`,
+    services.length
+      ? services.map(service => {
+          return `- ${service.Name || 'Service'} : ${windowsServiceStatusLabel(service.Status)} / démarrage ${windowsServiceStartTypeLabel(service.StartType)}`;
+        }).join('\n')
+      : '- Services non détectés',
+    ``,
+
+    `📦 Derniers correctifs installés`,
+    hotfixes.length
+      ? hotfixes.slice(0, 10).map(hotfix => {
+          return `- ${hotfix.HotFixID || 'KB inconnue'} — ${hotfix.Description || 'Description non détectée'} — installé le ${formatWindowsDate(hotfix.InstalledOn)}`;
+        }).join('\n')
+      : '- Aucun correctif détecté',
+    ``,
+
+    `🔍 Scan Windows Update`,
+    `- Statut : ${commandStatusIcon(scanCommand)}`,
+    `- Résultat : ${scanOutput}`,
+    ``,
+
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
 
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
@@ -2381,6 +2597,12 @@ function formatDiagnosticResultForTeams(result) {
     case 'network_basic':
       return formatNetworkBasicResult(result);
       
+case 'windows_update':
+  return formatWindowsUpdateResult(result);
+
+case 'battery_health':
+  return formatBatteryHealthResult(result);
+
 case 'speedtest_cli':
   return formatSpeedtestResult(result);
 
