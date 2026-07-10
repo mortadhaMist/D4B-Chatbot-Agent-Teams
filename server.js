@@ -2587,27 +2587,51 @@ function formatWindowsUpdateResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+function removeRawCommandNoise(text) {
+  const value = String(text || '').trim();
+
+  if (!value) return '';
+
+  // Hide Node.js exec messages that include the entire PowerShell command.
+  if (/^Command failed:/i.test(value)) {
+    return '';
+  }
+
+  return cleanDiagnosticText(value, 1200);
+}
+
 function formatSwitchPortResult(result) {
   const command = findCommand(result, 'PSDiscoveryProtocol') || (result.results || [])[0];
 
   const stdout = cleanDiagnosticText(command?.stdout, 2000);
-  const stderr = cleanDiagnosticText(command?.stderr, 2000);
-  const error = cleanDiagnosticText(command?.error, 2000);
+  const stderr = removeRawCommandNoise(command?.stderr);
+  const error = removeRawCommandNoise(command?.error);
 
-  const data = safeJsonParseAny(command?.stdout);
-  const entries = asArray(data).filter(Boolean);
+  const parsed = safeJsonParseAny(command?.stdout);
+  const entries = asArray(parsed).filter(Boolean);
+
+  const isFoundFalse =
+    parsed &&
+    typeof parsed === 'object' &&
+    parsed.found === false;
+
+  const cleanReason =
+    parsed?.error ||
+    parsed?.message ||
+    stderr ||
+    error ||
+    '';
 
   const lines = [
     formatDiagnosticHeader(result, 'Recherche port switch terminée'),
     ``,
     `🔌 Découverte réseau LLDP/CDP`,
-    `- Statut : ${commandStatusIcon(command)}`
+    `- Statut : ${entries.length ? '🟢 OK' : '🟠 Non détecté'}`
   ];
 
   if (entries.length) {
     lines.push(`- Équipement(s) détecté(s) : ${entries.length}`);
     lines.push(``);
-
     lines.push(`📍 Informations détectées`);
 
     entries.slice(0, 5).forEach((item, index) => {
@@ -2624,32 +2648,44 @@ function formatSwitchPortResult(result) {
 
     lines.push(``);
     lines.push(`🧾 Conclusion`);
-    lines.push(`- Le poste semble recevoir des informations LLDP/CDP.`);
-    lines.push(`- Le port switch peut être identifié à partir des informations ci-dessus.`);
+    lines.push(`- Le poste reçoit des informations LLDP/CDP.`);
+    lines.push(`- Le port switch peut être identifié avec les informations ci-dessus.`);
+
+    return lines.join('\n').slice(0, 7000);
+  }
+
+  lines.push(`- Équipement détecté : Non`);
+  lines.push(``);
+
+  lines.push(`🧾 Conclusion`);
+
+  if (isFoundFalse && cleanReason) {
+    lines.push(`- ${cleanReason}`);
   } else {
-    lines.push(`- Équipement détecté : Non`);
-    lines.push(``);
+    lines.push(`- Aucun voisin LLDP/CDP détecté.`);
+  }
 
-    lines.push(`🧾 Conclusion`);
+  lines.push(`- Causes possibles : LLDP/CDP désactivé sur le switch, droits insuffisants, capture réseau bloquée, module PowerShell manquant, ou politique de sécurité restrictive.`);
 
-    if (error || stderr) {
-      lines.push(`- La détection LLDP/CDP a échoué.`);
-      lines.push(`- Cause possible : module PowerShell manquant, droits insuffisants, capture réseau bloquée, ou switch non configuré pour LLDP/CDP.`);
-    } else {
-      lines.push(`- Aucun voisin LLDP/CDP détecté.`);
-      lines.push(`- Le switch ne publie peut-être pas LLDP/CDP sur ce port.`);
-    }
+  // Only show technical details if they are readable and not raw command noise.
+  const technicalDetails = [];
 
+  if (stdout && !isFoundFalse && !stdout.includes('powershell -NoProfile')) {
+    technicalDetails.push(`Sortie : ${stdout}`);
+  }
+
+  if (stderr) {
+    technicalDetails.push(`Erreur : ${stderr}`);
+  }
+
+  if (error) {
+    technicalDetails.push(`Erreur commande : ${error}`);
+  }
+
+  if (technicalDetails.length) {
     lines.push(``);
     lines.push(`🛠️ Détail technique`);
-
-    if (stdout) lines.push(`Sortie : ${stdout}`);
-    if (stderr) lines.push(`Erreur : ${stderr}`);
-    if (error) lines.push(`Erreur commande : ${error}`);
-
-    if (!stdout && !stderr && !error) {
-      lines.push(`Aucun détail retourné par la commande.`);
-    }
+    lines.push(technicalDetails.join('\n'));
   }
 
   return lines.join('\n').slice(0, 7000);
