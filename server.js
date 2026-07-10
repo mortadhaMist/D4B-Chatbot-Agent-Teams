@@ -2704,6 +2704,345 @@ function formatSwitchPortResult(result) {
 
   return lines.join('\n').slice(0, 7000);
 }
+
+function formatOfficeProcessName(name) {
+  const value = String(name || '').toLowerCase();
+
+  if (value === 'ms-teams' || value === 'teams') return 'Microsoft Teams';
+  if (value === 'outlook') return 'Microsoft Outlook';
+  if (value === 'winword') return 'Microsoft Word';
+  if (value === 'excel') return 'Microsoft Excel';
+  if (value === 'powerpnt') return 'Microsoft PowerPoint';
+
+  return name || 'Application inconnue';
+}
+
+function formatOfficeDate(value) {
+  if (!value) return 'Non détecté';
+
+  const raw = String(value);
+
+  const microsoftJsonDate = raw.match(/\/Date\((\d+)\)\//);
+  if (microsoftJsonDate) {
+    const date = new Date(Number(microsoftJsonDate[1]));
+    if (Number.isFinite(date.getTime())) {
+      return date.toLocaleString('fr-FR');
+    }
+  }
+
+  const date = new Date(value);
+  if (Number.isFinite(date.getTime())) {
+    return date.toLocaleString('fr-FR');
+  }
+
+  return raw;
+}
+
+function formatOfficeChannel(channel) {
+  const value = String(channel || '');
+
+  if (!value) return 'Non détecté';
+
+  if (value.includes('492350f6-3a01-4f97-b9c0-c7c6ddf67d60')) {
+    return 'Canal actuel / Current Channel';
+  }
+
+  if (value.includes('55336b82-a18d-4dd6-b5f6-9e5095c314a6')) {
+    return 'Canal mensuel entreprise';
+  }
+
+  if (value.includes('7ffbc6bf-bc32-4f92-8982-f9dd17fd3114')) {
+    return 'Canal semi-annuel entreprise';
+  }
+
+  return value;
+}
+
+function formatOfficeDiagnosticsResult(result) {
+  const processCommand = findCommand(result, 'Get-Process');
+  const configCommand = findCommand(result, 'ClickToRun');
+
+  const processes = asArray(safeJsonParseAny(processCommand?.stdout));
+  const config = safeJsonParseAny(configCommand?.stdout) || {};
+
+  const officeApps = processes.map(item => {
+    return {
+      name: formatOfficeProcessName(item.Name),
+      pid: item.Id || 'Non détecté',
+      cpu: Number.isFinite(Number(item.CPU)) ? Number(item.CPU).toFixed(2) : '0.00',
+      startTime: formatOfficeDate(item.StartTime)
+    };
+  });
+
+  const hasTeams = officeApps.some(app => app.name === 'Microsoft Teams');
+  const hasOfficeConfig = !!config.VersionToReport || !!config.ProductReleaseIds;
+
+  const conclusion = [];
+
+  if (officeApps.length) {
+    conclusion.push(`${officeApps.length} processus Office/Teams détecté(s) en cours d’exécution.`);
+  } else {
+    conclusion.push('Aucun processus Office/Teams actif détecté au moment du diagnostic.');
+  }
+
+  if (hasTeams) {
+    conclusion.push('Microsoft Teams est actuellement lancé.');
+  }
+
+  if (hasOfficeConfig) {
+    conclusion.push('La configuration Microsoft Office Click-to-Run a été détectée.');
+  } else {
+    conclusion.push('La configuration Office Click-to-Run n’a pas été détectée. Office peut être absent ou installé différemment.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic Office / Teams terminé'),
+    ``,
+
+    `🧩 Applications détectées`,
+    officeApps.length
+      ? officeApps.map(app => {
+          return `- ${app.name} — PID ${app.pid} — CPU ${app.cpu} — démarré le ${app.startTime}`;
+        }).join('\n')
+      : '- Aucune application Office/Teams active détectée',
+    ``,
+
+    `🏢 Configuration Microsoft Office`,
+    `- Produits : ${config.ProductReleaseIds || 'Non détecté'}`,
+    `- Version : ${config.VersionToReport || 'Non détecté'}`,
+    `- Canal de mise à jour : ${formatOfficeChannel(config.UpdateChannel)}`,
+    ``,
+
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
+
+function formatProxyDiagnosticsResult(result) {
+  const winHttpCommand = findCommand(result, 'netsh winhttp show proxy');
+  const userProxyCommand = findCommand(result, 'Internet Settings');
+
+  const winHttpOutput = cleanDiagnosticText(winHttpCommand?.stdout, 1200);
+  const userProxy = safeJsonParseAny(userProxyCommand?.stdout) || {};
+
+  const proxyEnabled = Number(userProxy.ProxyEnable) === 1;
+  const proxyServer = userProxy.ProxyServer || 'Non configuré';
+  const autoConfigUrl = userProxy.AutoConfigURL || 'Non configuré';
+
+  const winHttpDirect =
+    /accès direct|direct access|no proxy/i.test(winHttpOutput);
+
+  const conclusion = [];
+
+  if (winHttpDirect) {
+    conclusion.push('Le proxy WinHTTP est en accès direct, donc aucun proxy système WinHTTP n’est configuré.');
+  } else {
+    conclusion.push('Un proxy WinHTTP semble être configuré ou la sortie doit être vérifiée.');
+  }
+
+  if (!proxyEnabled && !userProxy.ProxyServer && !userProxy.AutoConfigURL) {
+    conclusion.push('Aucun proxy utilisateur Windows n’est activé.');
+  } else if (proxyEnabled) {
+    conclusion.push('Un proxy utilisateur est activé dans les paramètres Windows.');
+  }
+
+  if (userProxy.AutoConfigURL) {
+    conclusion.push('Un script de configuration automatique proxy PAC est configuré.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic proxy terminé'),
+    ``,
+
+    `🌐 Proxy WinHTTP`,
+    `- Statut : ${commandStatusIcon(winHttpCommand)}`,
+    `- Mode : ${winHttpDirect ? 'Accès direct, sans proxy' : 'Proxy détecté ou sortie à vérifier'}`,
+    ``,
+
+    `👤 Proxy utilisateur Windows`,
+    `- Proxy activé : ${proxyEnabled ? 'Oui' : 'Non'}`,
+    `- Serveur proxy : ${proxyServer}`,
+    `- Script automatique PAC : ${autoConfigUrl}`,
+    ``,
+
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
+
+function formatMicrosoftJsonDate(value) {
+  if (!value) return 'Non détecté';
+
+  const raw = String(value);
+  const match = raw.match(/\/Date\((\d+)\)\//);
+
+  if (match) {
+    const date = new Date(Number(match[1]));
+    if (Number.isFinite(date.getTime())) {
+      return date.toLocaleString('fr-FR');
+    }
+  }
+
+  const date = new Date(value);
+  if (Number.isFinite(date.getTime())) {
+    return date.toLocaleString('fr-FR');
+  }
+
+  return raw;
+}
+
+function eventLevelIcon(level) {
+  const value = String(level || '').toLowerCase();
+
+  if (value.includes('critique') || value.includes('critical')) return '🔴 Critique';
+  if (value.includes('erreur') || value.includes('error')) return '🔴 Erreur';
+  if (value.includes('avertissement') || value.includes('warning')) return '🟠 Avertissement';
+
+  return level || 'Non détecté';
+}
+
+function shortenEventMessage(message, max = 220) {
+  const clean = cleanDiagnosticText(message, max + 50)
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (clean.length <= max) return clean;
+
+  return `${clean.slice(0, max).trim()}...`;
+}
+
+function summarizeEvents(events) {
+  const grouped = new Map();
+
+  for (const event of events) {
+    const key = [
+      event.ProviderName || 'Unknown',
+      event.Id || 'Unknown',
+      event.LevelDisplayName || 'Unknown'
+    ].join('|');
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        provider: event.ProviderName || 'Non détecté',
+        id: event.Id || 'Non détecté',
+        level: event.LevelDisplayName || 'Non détecté',
+        count: 0,
+        latest: event.TimeCreated,
+        message: event.Message || ''
+      });
+    }
+
+    const item = grouped.get(key);
+    item.count += 1;
+
+    const currentDate = new Date(String(item.latest).replace(/\/Date\((\d+)\)\//, '$1'));
+    const eventDate = new Date(String(event.TimeCreated).replace(/\/Date\((\d+)\)\//, '$1'));
+
+    if (Number.isFinite(eventDate.getTime()) && (!Number.isFinite(currentDate.getTime()) || eventDate > currentDate)) {
+      item.latest = event.TimeCreated;
+      item.message = event.Message || item.message;
+    }
+  }
+
+  return Array.from(grouped.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+}
+
+function formatEventGroup(title, events) {
+  if (!events.length) {
+    return [
+      title,
+      '- Aucun événement critique, erreur ou avertissement détecté.'
+    ].join('\n');
+  }
+
+  const summary = summarizeEvents(events);
+
+  return [
+    title,
+    summary.map(item => {
+      return [
+        `- ${eventLevelIcon(item.level)} — ${item.provider} — ID ${item.id}`,
+        `  Occurrences : ${item.count}`,
+        `  Dernier événement : ${formatMicrosoftJsonDate(item.latest)}`,
+        `  Message : ${shortenEventMessage(item.message)}`
+      ].join('\n');
+    }).join('\n\n')
+  ].join('\n');
+}
+
+function formatEventLogSummaryResult(result) {
+  const systemCommand = findCommand(result, "LogName='System'") || findCommand(result, 'LogName=System');
+  const appCommand = findCommand(result, "LogName='Application'") || findCommand(result, 'LogName=Application');
+
+  const systemEvents = asArray(safeJsonParseAny(systemCommand?.stdout));
+  const appEvents = asArray(safeJsonParseAny(appCommand?.stdout));
+
+  const totalEvents = systemEvents.length + appEvents.length;
+  const errorEvents = [...systemEvents, ...appEvents].filter(event => {
+    const level = String(event.LevelDisplayName || '').toLowerCase();
+    return level.includes('erreur') || level.includes('error') || level.includes('critique') || level.includes('critical');
+  });
+
+  const warningEvents = [...systemEvents, ...appEvents].filter(event => {
+    const level = String(event.LevelDisplayName || '').toLowerCase();
+    return level.includes('avertissement') || level.includes('warning');
+  });
+
+  const conclusion = [];
+
+  if (totalEvents === 0) {
+    conclusion.push('Aucun événement système ou application important détecté dans la limite analysée.');
+  } else {
+    conclusion.push(`${totalEvents} événement(s) important(s) détecté(s) dans les journaux Système et Application.`);
+  }
+
+  if (errorEvents.length) {
+    conclusion.push(`${errorEvents.length} erreur(s) détectée(s). Vérifier les événements récurrents ci-dessus.`);
+  }
+
+  if (warningEvents.length) {
+    conclusion.push(`${warningEvents.length} avertissement(s) détecté(s).`);
+  }
+
+  const kernelPowerEvents = systemEvents.filter(event =>
+    String(event.ProviderName || '').toLowerCase().includes('kernel-processor-power')
+  );
+
+  if (kernelPowerEvents.length) {
+    conclusion.push('Des avertissements Kernel-Processor-Power sont présents. Cela peut être lié à une limitation CPU par le firmware, BIOS, alimentation ou gestion d’énergie.');
+  }
+
+  const perflibEvents = appEvents.filter(event =>
+    String(event.ProviderName || '').toLowerCase().includes('perflib')
+  );
+
+  if (perflibEvents.length) {
+    conclusion.push('Des erreurs Perflib sont présentes. Elles concernent souvent des compteurs de performance Windows et ne sont pas toujours bloquantes.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Résumé des journaux Windows terminé'),
+    ``,
+
+    `📊 Vue globale`,
+    `- Événements analysés : ${totalEvents}`,
+    `- Erreurs : ${errorEvents.length}`,
+    `- Avertissements : ${warningEvents.length}`,
+    ``,
+
+    formatEventGroup('🖥️ Journal Système', systemEvents),
+    ``,
+
+    formatEventGroup('📦 Journal Application', appEvents),
+    ``,
+
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
+
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -2713,6 +3052,15 @@ function formatDiagnosticResultForTeams(result) {
     case 'network_basic':
       return formatNetworkBasicResult(result);
       
+case 'eventlog_summary':
+  return formatEventLogSummaryResult(result);
+
+case 'proxy_diagnostics':
+  return formatProxyDiagnosticsResult(result);
+
+case 'office_diagnostics':
+  return formatOfficeDiagnosticsResult(result);
+
 case 'find_switch_port':
   return formatSwitchPortResult(result);
 
