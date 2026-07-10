@@ -2587,7 +2587,73 @@ function formatWindowsUpdateResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+function formatSwitchPortResult(result) {
+  const command = findCommand(result, 'PSDiscoveryProtocol') || (result.results || [])[0];
 
+  const stdout = cleanDiagnosticText(command?.stdout, 2000);
+  const stderr = cleanDiagnosticText(command?.stderr, 2000);
+  const error = cleanDiagnosticText(command?.error, 2000);
+
+  const data = safeJsonParseAny(command?.stdout);
+  const entries = asArray(data).filter(Boolean);
+
+  const lines = [
+    formatDiagnosticHeader(result, 'Recherche port switch terminée'),
+    ``,
+    `🔌 Découverte réseau LLDP/CDP`,
+    `- Statut : ${commandStatusIcon(command)}`
+  ];
+
+  if (entries.length) {
+    lines.push(`- Équipement(s) détecté(s) : ${entries.length}`);
+    lines.push(``);
+
+    lines.push(`📍 Informations détectées`);
+
+    entries.slice(0, 5).forEach((item, index) => {
+      lines.push(
+        [
+          `${index + 1}. Switch / voisin réseau`,
+          `   Nom : ${item.Device || item.DeviceName || item.SystemName || item.ChassisId || 'Non détecté'}`,
+          `   Port : ${item.Port || item.PortId || item.Interface || item.InterfaceName || 'Non détecté'}`,
+          `   Description : ${item.PortDescription || item.Description || 'Non détecté'}`,
+          `   VLAN : ${item.Vlan || item.VlanId || 'Non détecté'}`
+        ].join('\n')
+      );
+    });
+
+    lines.push(``);
+    lines.push(`🧾 Conclusion`);
+    lines.push(`- Le poste semble recevoir des informations LLDP/CDP.`);
+    lines.push(`- Le port switch peut être identifié à partir des informations ci-dessus.`);
+  } else {
+    lines.push(`- Équipement détecté : Non`);
+    lines.push(``);
+
+    lines.push(`🧾 Conclusion`);
+
+    if (error || stderr) {
+      lines.push(`- La détection LLDP/CDP a échoué.`);
+      lines.push(`- Cause possible : module PowerShell manquant, droits insuffisants, capture réseau bloquée, ou switch non configuré pour LLDP/CDP.`);
+    } else {
+      lines.push(`- Aucun voisin LLDP/CDP détecté.`);
+      lines.push(`- Le switch ne publie peut-être pas LLDP/CDP sur ce port.`);
+    }
+
+    lines.push(``);
+    lines.push(`🛠️ Détail technique`);
+
+    if (stdout) lines.push(`Sortie : ${stdout}`);
+    if (stderr) lines.push(`Erreur : ${stderr}`);
+    if (error) lines.push(`Erreur commande : ${error}`);
+
+    if (!stdout && !stderr && !error) {
+      lines.push(`Aucun détail retourné par la commande.`);
+    }
+  }
+
+  return lines.join('\n').slice(0, 7000);
+}
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -2597,6 +2663,9 @@ function formatDiagnosticResultForTeams(result) {
     case 'network_basic':
       return formatNetworkBasicResult(result);
       
+case 'find_switch_port':
+  return formatSwitchPortResult(result);
+
 case 'windows_update':
   return formatWindowsUpdateResult(result);
 
