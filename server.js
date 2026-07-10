@@ -3186,6 +3186,89 @@ function formatBitlockerStatusResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+
+function formatVpnStatus(value) {
+  const text = String(value || '').trim();
+
+  if (!text) return 'Non détecté';
+
+  const lower = text.toLowerCase();
+
+  if (lower === 'connected') return 'Connecté';
+  if (lower === 'disconnected') return 'Déconnecté';
+  if (lower === 'connecting') return 'Connexion en cours';
+
+  return text;
+}
+
+function formatVpnDiagnosticsResult(result) {
+  const vpnConnectionCommand =
+    findCommand(result, 'Get-VpnConnection') ||
+    (result.results || [])[0];
+
+  const vpnAdapterCommand =
+    findCommand(result, 'Get-NetAdapter') ||
+    (result.results || [])[1];
+
+  const vpnConnections = asArray(safeJsonParseAny(vpnConnectionCommand?.stdout));
+  const vpnAdapters = asArray(safeJsonParseAny(vpnAdapterCommand?.stdout));
+
+  const conclusion = [];
+
+  if (!vpnConnections.length) {
+    conclusion.push('Aucun profil VPN Windows natif n’a été détecté.');
+  } else {
+    conclusion.push(`${vpnConnections.length} profil(s) VPN Windows détecté(s).`);
+  }
+
+  if (!vpnAdapters.length) {
+    conclusion.push('Aucune carte réseau VPN/TAP/TUN connue n’a été détectée.');
+  } else {
+    conclusion.push(`${vpnAdapters.length} adaptateur(s) VPN détecté(s).`);
+  }
+
+  if (!vpnConnections.length && !vpnAdapters.length) {
+    conclusion.push('Le poste ne semble pas utiliser de VPN au moment du diagnostic.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic VPN terminé'),
+    ``,
+
+    `🔐 Profils VPN Windows`,
+    `- Statut commande : ${commandStatusIcon(vpnConnectionCommand)}`,
+    vpnConnections.length
+      ? vpnConnections.map(vpn => {
+          return [
+            `- ${vpn.Name || 'VPN sans nom'}`,
+            `  Serveur : ${vpn.ServerAddress || 'Non détecté'}`,
+            `  Statut : ${formatVpnStatus(vpn.ConnectionStatus)}`,
+            `  Type tunnel : ${vpn.TunnelType || 'Non détecté'}`,
+            `  Authentification : ${vpn.AuthenticationMethod || 'Non détecté'}`
+          ].join('\n');
+        }).join('\n')
+      : `- Aucun profil VPN détecté`,
+    ``,
+
+    `🌐 Adaptateurs VPN détectés`,
+    `- Statut commande : ${commandStatusIcon(vpnAdapterCommand)}`,
+    vpnAdapters.length
+      ? vpnAdapters.map(adapter => {
+          return [
+            `- ${adapter.Name || 'Adaptateur sans nom'}`,
+            `  Description : ${adapter.InterfaceDescription || 'Non détecté'}`,
+            `  Statut : ${adapter.Status || 'Non détecté'}`,
+            `  Vitesse : ${adapter.LinkSpeed || 'Non détecté'}`
+          ].join('\n');
+        }).join('\n')
+      : `- Aucun adaptateur VPN/TAP/TUN détecté`,
+    ``,
+
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
+
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -3195,6 +3278,9 @@ function formatDiagnosticResultForTeams(result) {
     case 'network_basic':
       return formatNetworkBasicResult(result);
       
+case 'vpn_diagnostics':
+  return formatVpnDiagnosticsResult(result);
+
 case 'bitlocker_status':
   return formatBitlockerStatusResult(result);
 
