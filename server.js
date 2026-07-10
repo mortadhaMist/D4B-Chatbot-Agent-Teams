@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const dotenv = require('dotenv');
-
+const crypto = require('crypto');
 dotenv.config();
 
 const PORT = process.env.PORT || 8080;
@@ -24,6 +24,45 @@ const pendingDiagnostics = new Map();
 
 const registeredAgents = new Map();
 const lastDiagnosticDeviceByConversation = new Map();
+
+const pendingAdminAuth = new Map();
+const adminUnlockedUntil = new Map();
+
+const ADMIN_UNLOCK_TTL_MS = 10 * 60 * 1000;
+
+const ADMIN_PROTECTED_TYPES = new Set([
+  // Existing protected actions
+  'flush_dns',
+  'clean_print_queue',
+  'temp_cleanup_light',
+  'install_chrome',
+  'install_teams',
+  'find_switch_port',
+
+  // Existing admin diagnostics
+  'defender_security',
+  'security_audit',
+  'storage_management',
+  'remote_access',
+  'bitlocker_status',
+  'repair_windows_image',
+
+  // New medium-risk repair actions
+  'renew_ip',
+  'restart_network_adapter',
+  'network_stack_reset',
+  'restart_print_spooler',
+  'windows_update_scan',
+  'windows_update_repair',
+  'sfc_scan',
+  'dism_restorehealth',
+  'gpupdate_force',
+  'clear_teams_cache',
+  'clear_browser_cache',
+
+  // New high-risk repair actions
+  'restart_computer'
+]);
 
 function normalizeDeviceId(deviceId) {
   return String(deviceId || '').trim().toUpperCase();
@@ -427,12 +466,299 @@ if (
       label: 'diagnostic erreurs application'
     };
   }
+
+if (
+  normalized.includes('diagnostic batterie') ||
+  normalized.includes('sante batterie') ||
+  normalized.includes('battery health')
+) {
+  return {
+    type: 'battery_health',
+    label: 'diagnostic batterie'
+  };
+}
+
+if (
+  normalized.includes('diagnostic bitlocker') ||
+  normalized.includes('statut bitlocker') ||
+  normalized.includes('bitlocker')
+) {
+  return {
+    type: 'bitlocker_status',
+    label: 'diagnostic BitLocker'
+  };
+}
+
+if (
+  normalized.includes('diagnostic disque') ||
+  normalized.includes('sante disque') ||
+  normalized.includes('disk health') ||
+  normalized.includes('smart disk')
+) {
+  return {
+    type: 'disk_health',
+    label: 'diagnostic santé disque'
+  };
+}
+
+if (
+  normalized.includes('applications installees') ||
+  normalized.includes('liste applications') ||
+  normalized.includes('installed apps')
+) {
+  return {
+    type: 'installed_apps',
+    label: 'inventaire des applications installées'
+  };
+}
+
+if (
+  normalized.includes('diagnostic proxy') ||
+  normalized.includes('proxy diagnostics')
+) {
+  return {
+    type: 'proxy_diagnostics',
+    label: 'diagnostic proxy'
+  };
+}
+
+if (
+  normalized.includes('diagnostic vpn') ||
+  normalized.includes('vpn diagnostics')
+) {
+  return {
+    type: 'vpn_diagnostics',
+    label: 'diagnostic VPN'
+  };
+}
+
+if (
+  normalized.includes('diagnostic office') ||
+  normalized.includes('diagnostic teams') ||
+  normalized.includes('diagnostic outlook') ||
+  normalized.includes('office diagnostics')
+) {
+  return {
+    type: 'office_diagnostics',
+    label: 'diagnostic Office / Teams / Outlook'
+  };
+}
+
+if (
+  normalized.includes('resume journaux evenements') ||
+  normalized.includes('journaux evenements') ||
+  normalized.includes('eventlog summary')
+) {
+  return {
+    type: 'eventlog_summary',
+    label: 'résumé des journaux d’événements'
+  };
+}
+if (
+  normalized.includes('renouveler ip') ||
+  normalized.includes('renew ip') ||
+  normalized.includes('ipconfig renew')
+) {
+  return {
+    type: 'renew_ip',
+    label: 'renouvellement de l’adresse IP'
+  };
+}
+
+if (
+  normalized.includes('redemarrer carte reseau') ||
+  normalized.includes('restart network adapter') ||
+  normalized.includes('reset carte reseau')
+) {
+  return {
+    type: 'restart_network_adapter',
+    label: 'redémarrage de la carte réseau'
+  };
+}
+
+if (
+  normalized.includes('reset reseau complet') ||
+  normalized.includes('reset network') ||
+  normalized.includes('reinitialiser reseau')
+) {
+  return {
+    type: 'network_stack_reset',
+    label: 'réinitialisation complète du réseau'
+  };
+}
+
+if (
+  normalized.includes('redemarrer spooler') ||
+  normalized.includes('restart spooler') ||
+  normalized.includes('redemarrer service impression')
+) {
+  return {
+    type: 'restart_print_spooler',
+    label: 'redémarrage du spouleur d’impression'
+  };
+}
+
+if (
+  normalized.includes('scan windows update') ||
+  normalized.includes('lancer scan windows update') ||
+  normalized.includes('chercher mises a jour')
+) {
+  return {
+    type: 'windows_update_scan',
+    label: 'scan Windows Update'
+  };
+}
+
+if (
+  normalized.includes('reparer windows update') ||
+  normalized.includes('reset windows update') ||
+  normalized.includes('windows update repair')
+) {
+  return {
+    type: 'windows_update_repair',
+    label: 'réparation Windows Update'
+  };
+}
+
+if (
+  normalized.includes('sfc scan') ||
+  normalized.includes('lancer sfc') ||
+  normalized.includes('sfc scannow')
+) {
+  return {
+    type: 'sfc_scan',
+    label: 'scan SFC Windows'
+  };
+}
+
+if (
+  normalized.includes('dism scan') ||
+  normalized.includes('lancer dism') ||
+  normalized.includes('dism restorehealth')
+) {
+  return {
+    type: 'dism_restorehealth',
+    label: 'réparation DISM Windows'
+  };
+}
+
+if (
+  normalized.includes('forcer gpupdate') ||
+  normalized.includes('gpupdate') ||
+  normalized.includes('maj strategie groupe')
+) {
+  return {
+    type: 'gpupdate_force',
+    label: 'mise à jour des stratégies de groupe'
+  };
+}
+
+if (
+  normalized.includes('redemarrer teams') ||
+  normalized.includes('restart teams')
+) {
+  return {
+    type: 'restart_teams',
+    label: 'redémarrage Microsoft Teams'
+  };
+}
+
+if (
+  normalized.includes('vider cache teams') ||
+  normalized.includes('nettoyer cache teams') ||
+  normalized.includes('clear teams cache')
+) {
+  return {
+    type: 'clear_teams_cache',
+    label: 'nettoyage du cache Microsoft Teams'
+  };
+}
+
+if (
+  normalized.includes('redemarrer outlook') ||
+  normalized.includes('restart outlook')
+) {
+  return {
+    type: 'restart_outlook',
+    label: 'redémarrage Microsoft Outlook'
+  };
+}
+
+if (
+  normalized.includes('reparer navigateur') ||
+  normalized.includes('nettoyer cache navigateur') ||
+  normalized.includes('clear browser cache')
+) {
+  return {
+    type: 'clear_browser_cache',
+    label: 'nettoyage cache navigateur'
+  };
+}
+
+if (
+  normalized.includes('redemarrer pc') ||
+  normalized.includes('restart pc') ||
+  normalized.includes('reboot pc')
+) {
+  return {
+    type: 'restart_computer',
+    label: 'redémarrage du poste'
+  };
+}
   return null;
 }
 
 function isYesConfirmation(text) {
   const normalized = normalizeTextForIntent(text);
   return /^(oui|yes|ok|confirme|je confirme|lance|lancer)$/i.test(normalized);
+}
+
+function isHighRiskDiagnostic(type) {
+  return new Set([
+    'restart_computer',
+    'network_stack_reset',
+    'windows_update_repair',
+    'dism_restorehealth'
+  ]).has(String(type || ''));
+}
+
+function isStrongAdminConfirmation(text) {
+  return normalizeTextForIntent(text) === 'confirmer action admin';
+}
+
+function isAdminProtectedDiagnostic(type) {
+  return ADMIN_PROTECTED_TYPES.has(String(type || ''));
+}
+
+function isAdminUnlocked(teamsConversationKey) {
+  const expiresAt = adminUnlockedUntil.get(teamsConversationKey);
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
+
+function unlockAdminForConversation(teamsConversationKey) {
+  adminUnlockedUntil.set(teamsConversationKey, Date.now() + ADMIN_UNLOCK_TTL_MS);
+}
+
+function secureCompareStrings(a, b) {
+  const left = Buffer.from(String(a || ''), 'utf8');
+  const right = Buffer.from(String(b || ''), 'utf8');
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(left, right);
+}
+
+function isValidSupportAdminPassword(text) {
+  const expected = process.env.SUPPORT_ADMIN_PASSWORD;
+
+  if (!expected) {
+    console.warn('SUPPORT_ADMIN_PASSWORD is missing on server.');
+    return false;
+  }
+
+  return secureCompareStrings(String(text || '').trim(), expected);
 }
 
 function createDiagnosticJob(deviceId, type, requestedBy, conversationReference = null) {
@@ -736,13 +1062,76 @@ if (isGreetingOnly(text)) {
   await next();
   return;
 }
+
+const pendingAdminRequest = pendingAdminAuth.get(teamsConversationKey);
+
+if (pendingAdminRequest) {
+  if (pendingAdminRequest.expiresAt < Date.now()) {
+    pendingAdminAuth.delete(teamsConversationKey);
+
+    await context.sendActivity(
+      `La demande d’autorisation admin a expiré.\n\n` +
+      `Relancez la commande si nécessaire.`
+    );
+
+    await next();
+    return;
+  }
+
+  if (!isValidSupportAdminPassword(text)) {
+    pendingAdminAuth.delete(teamsConversationKey);
+
+    await context.sendActivity(
+      `Mot de passe admin incorrect.\n\n` +
+      `La commande admin n’a pas été lancée.`
+    );
+
+    await next();
+    return;
+  }
+
+  pendingAdminAuth.delete(teamsConversationKey);
+  unlockAdminForConversation(teamsConversationKey);
+
+  pendingDiagnostics.set(teamsConversationKey, {
+    ...pendingAdminRequest.diagnosticRequest,
+    deviceId: pendingAdminRequest.targetDeviceId
+  });
+
+  await context.sendActivity(
+    `Mot de passe admin validé.\n\n` +
+    `Je peux lancer un ${pendingAdminRequest.diagnosticRequest.label} sur le poste ${pendingAdminRequest.targetDeviceId}.\n\n` +
+    `Confirmez-vous ? Répondez "oui".`
+  );
+
+  await next();
+  return;
+}
+
 const pendingDiagnostic = pendingDiagnostics.get(teamsConversationKey);
 
-if (pendingDiagnostic && isYesConfirmation(text)) {
+if (
+  pendingDiagnostic &&
+  (
+    isYesConfirmation(text) ||
+    (isHighRiskDiagnostic(pendingDiagnostic.type) && isStrongAdminConfirmation(text))
+  )
+) {
   const deviceId = pendingDiagnostic.deviceId;
 
 const conversationReference = TurnContext.getConversationReference(context.activity);
+if (isHighRiskDiagnostic(pendingDiagnostic.type) && !isStrongAdminConfirmation(text)) {
+  await context.sendActivity(
+    `Cette action est sensible.\n\n` +
+    `Action : ${pendingDiagnostic.label}\n` +
+    `Poste : ${pendingDiagnostic.deviceId}\n\n` +
+    `Pour confirmer, écrivez exactement :\n\n` +
+    `CONFIRMER ACTION ADMIN`
+  );
 
+  await next();
+  return;
+}
 const job = createDiagnosticJob(
   deviceId,
   pendingDiagnostic.type,
@@ -852,6 +1241,28 @@ const targetDeviceId =
     await next();
     return;
   }
+
+if (
+  isAdminProtectedDiagnostic(diagnosticRequest.type) &&
+  !isAdminUnlocked(teamsConversationKey)
+) {
+  pendingAdminAuth.set(teamsConversationKey, {
+    diagnosticRequest,
+    targetDeviceId,
+    expiresAt: Date.now() + 2 * 60 * 1000
+  });
+
+  await context.sendActivity(
+    `Cette commande nécessite une autorisation admin.\n\n` +
+    `Commande : ${diagnosticRequest.label}\n` +
+    `Poste : ${targetDeviceId}\n\n` +
+    `Veuillez saisir le mot de passe admin support pour continuer.\n\n` +
+    `Si le mot de passe est incorrect, la commande ne sera pas lancée.`
+  );
+
+  await next();
+  return;
+}
 
   pendingDiagnostics.set(teamsConversationKey, {
     ...diagnosticRequest,
@@ -1140,6 +1551,49 @@ function extractDnsLines(text) {
     .slice(0, 8);
 }
 
+function formatRepairActionResult(result, title, successMessage, warningMessage = null) {
+  const outputs = result.results || [];
+
+  const failed = outputs.filter(item =>
+    item.error ||
+    String(item.stderr || '').trim()
+  );
+
+  const skipped = outputs.filter(item => item.skipped);
+
+  const lines = outputs.map((item, index) => {
+    return [
+      `${index + 1}. ${item.label || 'Action'}`,
+      `   Statut : ${commandStatusIcon(item)}`,
+      item.skipped ? `   Ignoré : droits administrateur requis` : null,
+      item.stdout ? `   Sortie : ${cleanDiagnosticText(item.stdout, 700)}` : null,
+      item.stderr ? `   Erreur : ${cleanDiagnosticText(item.stderr, 700)}` : null,
+      item.error ? `   Erreur : ${cleanDiagnosticText(item.error, 700)}` : null
+    ].filter(Boolean).join('\n');
+  });
+
+  const conclusion = [];
+
+  if (skipped.length) {
+    conclusion.push('Une ou plusieurs actions ont été ignorées car l’agent ne tourne pas en administrateur.');
+  }
+
+  if (failed.length) {
+    conclusion.push(warningMessage || 'Une ou plusieurs actions ont retourné une erreur. Vérifier le détail ci-dessus.');
+  } else {
+    conclusion.push(successMessage || 'Action exécutée avec succès.');
+  }
+
+  return [
+    formatDiagnosticHeader(result, title),
+    ``,
+    `🛠️ Actions exécutées`,
+    lines.length ? lines.join('\n\n') : '- Aucune sortie disponible',
+    ``,
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
 
 function formatDiagnosticHeader(result, title) {
   return [
@@ -1929,6 +2383,104 @@ function formatDiagnosticResultForTeams(result) {
       
 case 'speedtest_cli':
   return formatSpeedtestResult(result);
+
+case 'renew_ip':
+  return formatRepairActionResult(
+    result,
+    'Renouvellement IP terminé',
+    'L’adresse IP a été renouvelée et le cache DNS a été vidé.'
+  );
+
+case 'restart_network_adapter':
+  return formatRepairActionResult(
+    result,
+    'Redémarrage carte réseau terminé',
+    'La carte réseau active a été redémarrée.'
+  );
+
+case 'network_stack_reset':
+  return formatRepairActionResult(
+    result,
+    'Réinitialisation réseau terminée',
+    'La pile réseau a été réinitialisée. Un redémarrage du poste peut être nécessaire.'
+  );
+
+case 'restart_print_spooler':
+  return formatRepairActionResult(
+    result,
+    'Redémarrage spouleur terminé',
+    'Le spouleur d’impression a été redémarré.'
+  );
+
+case 'windows_update_scan':
+  return formatRepairActionResult(
+    result,
+    'Scan Windows Update lancé',
+    'Le scan Windows Update a été déclenché.'
+  );
+
+case 'windows_update_repair':
+  return formatRepairActionResult(
+    result,
+    'Réparation Windows Update terminée',
+    'Les composants Windows Update ont été réinitialisés.'
+  );
+
+case 'sfc_scan':
+  return formatRepairActionResult(
+    result,
+    'Scan SFC terminé',
+    'Le scan SFC a été exécuté. Vérifier la sortie pour savoir si des fichiers ont été réparés.'
+  );
+
+case 'dism_restorehealth':
+  return formatRepairActionResult(
+    result,
+    'Réparation DISM terminée',
+    'DISM RestoreHealth a été exécuté.'
+  );
+
+case 'gpupdate_force':
+  return formatRepairActionResult(
+    result,
+    'Mise à jour GPO terminée',
+    'Les stratégies de groupe ont été mises à jour.'
+  );
+
+case 'restart_teams':
+  return formatRepairActionResult(
+    result,
+    'Redémarrage Teams terminé',
+    'Microsoft Teams a été fermé ou redémarré.'
+  );
+
+case 'clear_teams_cache':
+  return formatRepairActionResult(
+    result,
+    'Nettoyage cache Teams terminé',
+    'Le cache Microsoft Teams a été nettoyé.'
+  );
+
+case 'restart_outlook':
+  return formatRepairActionResult(
+    result,
+    'Redémarrage Outlook terminé',
+    'Microsoft Outlook a été fermé. L’utilisateur peut le relancer.'
+  );
+
+case 'clear_browser_cache':
+  return formatRepairActionResult(
+    result,
+    'Nettoyage cache navigateur terminé',
+    'Les caches Chrome/Edge ont été nettoyés si présents.'
+  );
+
+case 'restart_computer':
+  return formatRepairActionResult(
+    result,
+    'Redémarrage poste planifié',
+    'Le redémarrage du poste a été planifié avec un délai de 60 secondes.'
+  );
 
 case 'defender_security':
   return formatDefenderSecurityResult(result);
