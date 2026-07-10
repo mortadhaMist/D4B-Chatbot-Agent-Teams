@@ -3042,7 +3042,67 @@ function formatEventLogSummaryResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+function formatStorageGb(value) {
+  const number = Number(value);
 
+  if (!Number.isFinite(number)) return 'Non détecté';
+
+  return `${number.toFixed(2)} Go`;
+}
+
+function formatTempCleanupLightResult(result) {
+  const command = findCommand(result, 'BeforeFreeGB') || findCommand(result, 'Clear-RecycleBin') || (result.results || [])[0];
+
+  const data = safeJsonParseAny(command?.stdout) || {};
+
+  const beforeFree = Number(data.BeforeFreeGB);
+  const afterFree = Number(data.AfterFreeGB);
+  const freed = Number(data.FreedGB);
+
+  const hasValidData =
+    Number.isFinite(beforeFree) ||
+    Number.isFinite(afterFree) ||
+    Number.isFinite(freed);
+
+  const conclusion = [];
+
+  if (Number.isFinite(freed) && freed > 1) {
+    conclusion.push(`Nettoyage efficace : environ ${formatStorageGb(freed)} libérés.`);
+  } else if (Number.isFinite(freed) && freed > 0) {
+    conclusion.push(`Nettoyage léger effectué : environ ${formatStorageGb(freed)} libérés.`);
+  } else if (Number.isFinite(freed)) {
+    conclusion.push('Nettoyage terminé, mais aucun espace significatif n’a été libéré.');
+  } else {
+    conclusion.push('Nettoyage terminé, mais l’espace libéré n’a pas pu être calculé.');
+  }
+
+  conclusion.push('Les fichiers temporaires utilisateur, le dossier Temp Windows et la corbeille ont été nettoyés si accessibles.');
+
+  return [
+    formatDiagnosticHeader(result, 'Nettoyage temporaire terminé'),
+    ``,
+
+    `🧹 Nettoyage effectué`,
+    `- Statut : ${commandStatusIcon(command)}`,
+    `- Fichiers temporaires utilisateur : nettoyés si accessibles`,
+    `- Fichiers temporaires Windows : nettoyés si accessibles`,
+    `- Corbeille : vidée si accessible`,
+    ``,
+
+    `💾 Espace disque C:`,
+    hasValidData
+      ? [
+          `- Avant nettoyage : ${formatStorageGb(beforeFree)}`,
+          `- Après nettoyage : ${formatStorageGb(afterFree)}`,
+          `- Espace libéré : ${formatStorageGb(freed)}`
+        ].join('\n')
+      : '- Données disque non disponibles',
+    ``,
+
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -3052,6 +3112,9 @@ function formatDiagnosticResultForTeams(result) {
     case 'network_basic':
       return formatNetworkBasicResult(result);
       
+case 'temp_cleanup_light':
+  return formatTempCleanupLightResult(result);
+
 case 'eventlog_summary':
   return formatEventLogSummaryResult(result);
 
