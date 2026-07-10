@@ -3103,6 +3103,89 @@ function formatTempCleanupLightResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+function bitlockerVolumeStatusLabel(value) {
+  const code = Number(value);
+
+  const labels = {
+    0: 'Entièrement déchiffré',
+    1: 'Entièrement chiffré',
+    2: 'Chiffrement en cours',
+    3: 'Déchiffrement en cours',
+    4: 'Chiffrement suspendu',
+    5: 'Déchiffrement suspendu',
+    6: 'Chiffrement en attente',
+    7: 'Déchiffrement en attente'
+  };
+
+  return labels[code] || `Code ${value}`;
+}
+
+function bitlockerProtectionStatusLabel(value) {
+  const code = Number(value);
+
+  const labels = {
+    0: 'Protection désactivée',
+    1: 'Protection activée',
+    2: 'Protection inconnue'
+  };
+
+  return labels[code] || `Code ${value}`;
+}
+
+function formatBitlockerStatusResult(result) {
+  const command =
+    findCommand(result, 'Get-BitLockerVolume') ||
+    (result.results || [])[0];
+
+  const volumes = asArray(safeJsonParseAny(command?.stdout));
+
+  const encryptedVolumes = volumes.filter(volume =>
+    Number(volume.EncryptionPercentage) > 0 ||
+    Number(volume.ProtectionStatus) === 1
+  );
+
+  const unprotectedVolumes = volumes.filter(volume =>
+    Number(volume.ProtectionStatus) === 0
+  );
+
+  const conclusion = [];
+
+  if (!volumes.length) {
+    conclusion.push('Aucun volume BitLocker détecté ou les informations BitLocker ne sont pas accessibles.');
+  } else if (encryptedVolumes.length === 0) {
+    conclusion.push('Aucun volume chiffré par BitLocker n’a été détecté.');
+  } else {
+    conclusion.push(`${encryptedVolumes.length} volume(s) semblent chiffrés ou protégés par BitLocker.`);
+  }
+
+  if (unprotectedVolumes.length) {
+    conclusion.push(`${unprotectedVolumes.length} volume(s) ont la protection BitLocker désactivée.`);
+  }
+
+  return [
+    formatDiagnosticHeader(result, 'Diagnostic BitLocker terminé'),
+    ``,
+
+    `🔐 État BitLocker`,
+    `- Statut commande : ${commandStatusIcon(command)}`,
+    ``,
+
+    volumes.length
+      ? volumes.map(volume => {
+          return [
+            `💽 Volume ${volume.MountPoint || 'Non détecté'}`,
+            `- État du volume : ${bitlockerVolumeStatusLabel(volume.VolumeStatus)}`,
+            `- Protection : ${bitlockerProtectionStatusLabel(volume.ProtectionStatus)}`,
+            `- Chiffrement : ${volume.EncryptionPercentage ?? 0}%`
+          ].join('\n');
+        }).join('\n\n')
+      : `- Aucun volume détecté`,
+    ``,
+
+    `🧾 Conclusion`,
+    conclusion.map(x => `- ${x}`).join('\n')
+  ].join('\n').slice(0, 7000);
+}
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -3112,6 +3195,9 @@ function formatDiagnosticResultForTeams(result) {
     case 'network_basic':
       return formatNetworkBasicResult(result);
       
+case 'bitlocker_status':
+  return formatBitlockerStatusResult(result);
+
 case 'temp_cleanup_light':
   return formatTempCleanupLightResult(result);
 
