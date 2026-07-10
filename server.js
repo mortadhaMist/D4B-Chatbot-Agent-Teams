@@ -1550,7 +1550,21 @@ function extractDnsLines(text) {
     )
     .slice(0, 8);
 }
+function removeRawCommandNoise(text) {
+  const value = String(text || '').trim();
 
+  if (!value) return '';
+
+  if (/^Command failed:/i.test(value)) {
+    return '';
+  }
+
+  if (value.includes('powershell -NoProfile')) {
+    return '';
+  }
+
+  return cleanDiagnosticText(value, 700);
+}
 function formatRepairActionResult(result, title, successMessage, warningMessage = null) {
   const outputs = result.results || [];
 
@@ -1566,13 +1580,13 @@ function formatRepairActionResult(result, title, successMessage, warningMessage 
       ? cleanDiagnosticText(item.stdout, 700)
       : null;
 
-    const stderrText = item.stderr
-      ? cleanDiagnosticText(item.stderr, 700)
-      : null;
+const stderrText = item.stderr
+  ? removeRawCommandNoise(item.stderr)
+  : null;
 
-    const errorText = item.error
-      ? cleanDiagnosticText(item.error, 700)
-      : null;
+const errorText = item.error
+  ? removeRawCommandNoise(item.error)
+  : null;
 
     return [
       `${index + 1}. ${item.label || 'Action'}`,
