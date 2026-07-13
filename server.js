@@ -1268,11 +1268,9 @@ if (isGreetingOnly(text)) {
 
     `Pour commencer, dites-moi ce qui ne va pas 👇`,
 
-    `🎫 Pour créer un ticket, écrivez « ticket ».`
-
     `🎫 Pour créer un ticket, écrivez « ticket ».`,
 
-    
+
 `📦 Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série [IMEI].`
   ];
 
