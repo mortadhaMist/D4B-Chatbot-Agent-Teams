@@ -1071,7 +1071,7 @@ async function getD4BApiToken() {
   return token;
 }
 
-async function getMaterielByImei(imei) {
+async function getMaterielByImei(serialNumber) {
   const baseUrl =
     process.env.D4B_MATERIEL_API_URL ||
     'https://d4brestapi.com/V1/ticket/getMaterielHisto';
@@ -1079,19 +1079,25 @@ async function getMaterielByImei(imei) {
   const token = await getD4BApiToken();
 
   const url = new URL(baseUrl);
-  url.searchParams.set('mode', 'prod');
+
   url.searchParams.set('token', token);
-  url.searchParams.set('IMEI', imei);
+
+  // Use "test" if you want test mode, "prod" if you want production.
+  url.searchParams.set('mode', process.env.D4B_MATERIEL_MODE || 'test');
+
+  // IMPORTANT: API expects SN, not IMEI.
+  url.searchParams.set('SN', serialNumber);
 
   console.log('[Materiel API] Trying:', {
     url: url.toString().replace(token, '***TOKEN***'),
-    hasToken: !!token
+    hasToken: !!token,
+    serialNumber
   });
 
   const response = await fetch(url.toString(), {
     method: 'GET',
     headers: {
-      Accept: 'text/plain, application/json, */*'
+      Accept: 'application/json, text/plain, */*'
     }
   });
 
@@ -1107,7 +1113,6 @@ async function getMaterielByImei(imei) {
     return { raw: bodyText };
   }
 }
-
 
 function cleanMaterielValue(value) {
   if (value === null || value === undefined || value === '') {
