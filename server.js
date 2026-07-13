@@ -1294,7 +1294,7 @@ const suiviSection = [
 
 function appendTechnicienPromptOnce(replyText) {
   const ticketPrompt = '🎫 Pour créer un ticket, écrivez « ticket ».';
-  const materielPrompt = '📦 Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série [IMEI].';
+  const materielPrompt = '📦 Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série.';
 
   const cleaned = String(replyText || '')
     .replace(/🎫\s*Pour créer un ticket, écrivez « ticket »\.?/gi, '')
@@ -1509,7 +1509,7 @@ if (isGreetingOnly(text)) {
     `🎫 Pour créer un ticket, écrivez « ticket ».`,
 
 
-`📦 Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série [IMEI].`
+`📦 Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série.`
   ];
 
   const welcomeText = welcomeParts.join('\n\n');
