@@ -1029,10 +1029,10 @@ async function getD4BApiToken() {
 
   const authUrl =
     process.env.D4B_AUTH_API_URL ||
-    'https://d4brestapi.com/V1/authentification/test';
+    'https://d4brestapi.com/V1/authentification/prod';
 
   const url = new URL(authUrl);
-  url.searchParams.set('mode', 'test');
+  url.searchParams.set('mode', 'prod');
 
   console.log('[D4B Auth API] Trying auth:', {
     url: url.toString(),
