@@ -1298,7 +1298,7 @@ function appendTechnicienPromptOnce(replyText) {
 
   const cleaned = String(replyText || '')
     .replace(/🎫\s*Pour créer un ticket, écrivez « ticket »\.?/gi, '')
-    .replace(/📦\s*Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série \[IMEI\]\.?/gi, '')
+    .replace(/📦\s*Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série]\.?/gi, '')
     .trim();
 
   return `${cleaned}\n\n\u200B\n\n${ticketPrompt}\n${materielPrompt}`;
