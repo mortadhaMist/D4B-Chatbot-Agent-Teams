@@ -1031,40 +1031,35 @@ async function getD4BApiToken() {
     process.env.D4B_AUTH_API_URL ||
     'https://d4brestapi.com/V1/authentification/test';
 
-  const response = await fetch(authUrl, {
+  const url = new URL(authUrl);
+  url.searchParams.set('mode', 'test');
+
+  console.log('[D4B Auth API] Trying auth:', {
+    url: url.toString(),
+    hasAuthorization: !!process.env.AUTHORIZATION,
+    authorizationValue: process.env.AUTHORIZATION || '',
+    hasAuthKey: !!process.env.AUTHKEY,
+    authKeyLength: String(process.env.AUTHKEY || '').length
+  });
+
+  const response = await fetch(url.toString(), {
     method: 'GET',
     headers: {
       Authorization: process.env.AUTHORIZATION || '',
       AuthKey: process.env.AUTHKEY || '',
-
-      // IMPORTANT: this API returns text/plain, not application/json.
       Accept: 'text/plain, */*'
     }
   });
 
-  const contentType = response.headers.get('content-type') || '';
   const bodyText = await response.text();
 
   if (!response.ok) {
     throw new Error(`Auth API ${response.status}: ${bodyText.slice(0, 500)}`);
   }
 
-  let token = '';
-
-  if (contentType.includes('application/json')) {
-    try {
-      const data = JSON.parse(bodyText);
-      token = extractD4BToken(data);
-    } catch {
-      token = '';
-    }
-  } else {
-    // Auth API returns the token directly as text/plain.
-    token = String(bodyText || '').trim();
-  }
+  const token = String(bodyText || '').trim();
 
   if (!token) {
-    console.error('[D4B Auth API] Réponse sans token:', bodyText.slice(0, 300));
     throw new Error('Auth API: token non trouvé dans la réponse.');
   }
 
@@ -1100,26 +1095,10 @@ async function getMaterielByImei(imei) {
     }
   });
 
-  const contentType = response.headers.get('content-type') || '';
   const bodyText = await response.text();
 
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      d4bApiTokenCache = {
-        token: null,
-        expiresAt: 0
-      };
-    }
-
     throw new Error(`API matériel ${response.status}: ${bodyText.slice(0, 500)}`);
-  }
-
-  if (contentType.includes('application/json')) {
-    try {
-      return JSON.parse(bodyText);
-    } catch {
-      return { raw: bodyText };
-    }
   }
 
   try {
