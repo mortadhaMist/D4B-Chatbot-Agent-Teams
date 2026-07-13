@@ -1083,7 +1083,7 @@ async function getMaterielByImei(serialNumber) {
   url.searchParams.set('token', token);
 
   // Use "test" if you want test mode, "prod" if you want production.
-  url.searchParams.set('mode', process.env.D4B_MATERIEL_MODE || 'test');
+  url.searchParams.set('mode', process.env.D4B_MATERIEL_MODE || 'prod');
 
   // IMPORTANT: API expects SN, not IMEI.
   url.searchParams.set('SN', serialNumber);
