@@ -929,7 +929,11 @@ function isMaterielHistoryRequest(text) {
     normalized.includes('garantie imei') ||
     normalized.includes('serie imei') ||
     normalized.includes('numero de serie') ||
-    normalized.includes('numéro de série')
+    normalized.includes('numéro de série') ||
+    normalized.includes('imei') ||
+    normalized.includes('serial') ||
+    normalized.includes('serial number') ||
+    normalized.includes('IMEI') 
   );
 }
 
@@ -961,8 +965,8 @@ async function getMaterielByImei(imei) {
   const response = await fetch(url.toString(), {
     method: 'GET',
     headers: {
-      Authorization: process.env.D4B_MATERIEL_AUTHORIZATION || '',
-      AuthKey: process.env.D4B_MATERIEL_AUTHKEY || '',
+      Authorization: process.env.AUTHORIZATION || '',
+      AuthKey: process.env.AUTHKEY || '',
       Accept: 'application/json'
     }
   });
