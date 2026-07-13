@@ -22,6 +22,10 @@ const MAX_TEAMS_HISTORY_TURNS = 20;
 const diagnosticJobs = [];
 const pendingDiagnostics = new Map();
 const pendingMaterielLookup = new Map();
+let d4bApiTokenCache = {
+  token: null,
+  expiresAt: 0
+};
 const registeredAgents = new Map();
 const lastDiagnosticDeviceByConversation = new Map();
 
@@ -954,19 +958,68 @@ function formatMaterielPrompt() {
   return `Tapez le numéro de série [IMEI] pour avoir l’historique.`;
 }
 
-async function getMaterielByImei(imei) {
-  const baseUrl = process.env.D4B_MATERIEL_API_URL || 'https://d4brestapi.com/V1/ticket/getMateriel';
+function extractD4BToken(data) {
+  return (
+    data?.token ||
+    data?.Token ||
+    data?.access_token ||
+    data?.accessToken ||
+    data?.jwt ||
+    data?.JWT ||
+    data?.data?.token ||
+    data?.data?.Token ||
+    data?.result?.token ||
+    data?.result?.Token ||
+    null
+  );
+}
 
-  const url = new URL(baseUrl);
+function getD4BTokenTtlMs(data) {
+  const expiresIn =
+    data?.expires_in ||
+    data?.expiresIn ||
+    data?.expires ||
+    data?.data?.expires_in ||
+    data?.data?.expiresIn;
 
-  // If your API expects a different parameter name, change "imei" here.
- url.searchParams.set('IMEI', imei);
+  const seconds = Number(expiresIn);
 
-  const response = await fetch(url.toString(), {
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.max(30, seconds - 60) * 1000;
+  }
+
+  // Default cache: 25 minutes if the API does not return expiry.
+  return 25 * 60 * 1000;
+}
+
+async function getD4BApiToken() {
+  if (
+    d4bApiTokenCache.token &&
+    Number.isFinite(d4bApiTokenCache.expiresAt) &&
+    d4bApiTokenCache.expiresAt > Date.now()
+  ) {
+    return d4bApiTokenCache.token;
+  }
+
+  const authUrl =
+    process.env.D4B_AUTH_API_URL ||
+    'https://d4brestapi.com/V1/authentification/test';
+
+  const authorization =
+    process.env.D4B_MATERIEL_AUTHORIZATION ||
+    process.env.AUTHORIZATION ||
+    '';
+
+  const authKey =
+    process.env.D4B_MATERIEL_AUTHKEY ||
+    process.env.AUTHKEY ||
+    '';
+
+  const response = await fetch(authUrl, {
     method: 'GET',
     headers: {
-      Authorization: process.env.AUTHORIZATION || '',
-      AuthKey: process.env.AUTHKEY || '',
+      Authorization: authorization,
+      AuthKey: authKey,
       Accept: 'application/json'
     }
   });
@@ -975,22 +1028,120 @@ async function getMaterielByImei(imei) {
   const bodyText = await response.text();
 
   if (!response.ok) {
-    throw new Error(`API matériel ${response.status}: ${bodyText.slice(0, 500)}`);
+    throw new Error(`Auth API ${response.status}: ${bodyText.slice(0, 500)}`);
   }
 
+  let data = null;
+
   if (contentType.includes('application/json')) {
+    data = JSON.parse(bodyText);
+  } else {
     try {
-      return JSON.parse(bodyText);
+      data = JSON.parse(bodyText);
     } catch {
-      return { raw: bodyText };
+      data = { token: bodyText };
     }
   }
 
-  try {
-    return JSON.parse(bodyText);
-  } catch {
-    return { raw: bodyText };
+  const token = extractD4BToken(data);
+
+  if (!token) {
+    console.error('[D4B Auth API] Réponse sans token:', data);
+    throw new Error('Auth API: token non trouvé dans la réponse.');
   }
+
+  d4bApiTokenCache = {
+    token,
+    expiresAt: Date.now() + getD4BTokenTtlMs(data)
+  };
+
+  return token;
+}
+
+async function getMaterielByImei(imei) {
+  const baseUrl =
+    process.env.D4B_MATERIEL_API_URL ||
+    'https://d4brestapi.com/V1/ticket/getMateriel';
+
+  const token = await getD4BApiToken();
+
+  const parameterNames = [
+    'IMEI',
+    'imei',
+    'Imei',
+    'numSerie',
+    'NumSerie',
+    'numeroSerie',
+    'serial',
+    'serialNumber'
+  ];
+
+  const attempts = [];
+
+  for (const parameterName of parameterNames) {
+    const url = new URL(baseUrl);
+
+    url.searchParams.set('mode', 'test');
+    url.searchParams.set('token', token);
+    url.searchParams.set(parameterName, imei);
+
+    console.log('[Materiel API] Trying:', {
+      url: url.toString().replace(token, '***TOKEN***'),
+      parameterName,
+      hasToken: !!token
+    });
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json'
+      }
+    });
+
+    const contentType = response.headers.get('content-type') || '';
+    const bodyText = await response.text();
+
+    attempts.push({
+      parameterName,
+      status: response.status,
+      body: bodyText.slice(0, 300)
+    });
+
+    if (response.ok) {
+      if (contentType.includes('application/json')) {
+        try {
+          return JSON.parse(bodyText);
+        } catch {
+          return { raw: bodyText };
+        }
+      }
+
+      try {
+        return JSON.parse(bodyText);
+      } catch {
+        return { raw: bodyText };
+      }
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      d4bApiTokenCache = {
+        token: null,
+        expiresAt: 0
+      };
+
+      throw new Error(`API matériel ${response.status}: token refusé ou expiré.`);
+    }
+
+    if (response.status !== 400) {
+      throw new Error(`API matériel ${response.status}: ${bodyText.slice(0, 500)}`);
+    }
+  }
+
+  console.error('[Materiel API] All parameter attempts failed:', attempts);
+
+  throw new Error(
+    `API matériel 400: aucun nom de paramètre IMEI accepté. Paramètres testés : ${parameterNames.join(', ')}`
+  );
 }
 
 function cleanMaterielValue(value) {
