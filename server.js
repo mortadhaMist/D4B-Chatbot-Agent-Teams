@@ -981,7 +981,7 @@ function extractImeiFromText(text) {
 }
 
 function formatMaterielPrompt() {
-  return `Tapez le numéro de série [IMEI] pour avoir l’historique.`;
+  return `Tapez le numéro de série [SN] ou l’IMEI pour avoir l’historique.`;
 }
 
 function extractD4BToken(data) {
@@ -1126,14 +1126,14 @@ function cleanMaterielValue(value) {
   return String(value).trim();
 }
 
-function formatMaterielHistoryForTeams(imei, data) {
+function formatMaterielHistoryForTeams(serialNumber, data) {
   const payload = data?.data || data?.materiel || data?.result || data;
 
   if (!payload) {
     return [
       `📦 Historique matériel`,
       ``,
-      `IMEI / Numéro de série : ${imei}`,
+      `Numéro de série saisi : ${serialNumber}`,
       ``,
       `Aucune information matériel trouvée pour ce numéro.`
     ].join('\n');
@@ -1144,7 +1144,7 @@ function formatMaterielHistoryForTeams(imei, data) {
       return [
         `📦 Historique matériel`,
         ``,
-        `IMEI / Numéro de série : ${imei}`,
+        `Numéro de série saisi : ${serialNumber}`,
         ``,
         `Aucun historique trouvé.`
       ].join('\n');
@@ -1153,30 +1153,108 @@ function formatMaterielHistoryForTeams(imei, data) {
     return [
       `📦 Historique matériel`,
       ``,
-      `IMEI / Numéro de série : ${imei}`,
+      `Numéro de série saisi : ${serialNumber}`,
       `Éléments trouvés : ${payload.length}`,
       ``,
-      payload.slice(0, 5).map((item, index) => {
+      payload.slice(0, 10).map((item, index) => {
         return [
           `${index + 1}. Élément matériel`,
-          ...Object.entries(item).slice(0, 12).map(([key, value]) => {
+          ...Object.entries(item).slice(0, 20).map(([key, value]) => {
             return `- ${key} : ${cleanMaterielValue(value)}`;
           })
         ].join('\n');
       }).join('\n\n')
-    ].join('\n').slice(0, 7000);
+    ].join('\n').slice(0, 12000);
+  }
+
+  const suivis = Array.isArray(payload.lstSuivi) ? payload.lstSuivi : [];
+
+  const mainInfo = [
+    `📦 Historique matériel`,
+    ``,
+    `🔎 Recherche`,
+    `- Numéro de série saisi : ${serialNumber}`,
+    `- Résultat : ${payload.description || payload.statutsRep || 'Non disponible'}`,
+    ``,
+
+    `📱 Matériel`,
+    `- Client : ${cleanMaterielValue(payload.NomClient)}`,
+    `- Marque : ${cleanMaterielValue(payload.MARQUE)}`,
+    `- Modèle : ${cleanMaterielValue(payload.MODEL)}`,
+    `- IMEI : ${cleanMaterielValue(payload.IMEI)}`,
+    `- Numéro de série : ${cleanMaterielValue(payload.NoSerie)}`,
+    `- Matricule : ${cleanMaterielValue(payload.Matricule)}`,
+    `- Utilisateur : ${cleanMaterielValue(payload.NomUtilisateur)}`,
+    ``,
+
+    `📍 État actuel`,
+    `- Statut parc : ${cleanMaterielValue(payload.StatusParc)}`,
+    `- État stock : ${cleanMaterielValue(payload.EtatStock)}`,
+    `- Localisation : ${cleanMaterielValue(payload.localisation)}`,
+    `- Cause entrée : ${cleanMaterielValue(payload.CausEntree)}`,
+    `- Service : ${cleanMaterielValue(payload.Service)}`,
+    `- Information : ${cleanMaterielValue(payload.Information)}`,
+    ``,
+
+    `📄 Références`,
+    `- No SWAP : ${cleanMaterielValue(payload.NoSWAP)}`,
+    `- No retour : ${cleanMaterielValue(payload.NoRetour)}`,
+    `- No commande : ${cleanMaterielValue(payload.NoCommande)}`,
+    `- Date commande : ${cleanMaterielValue(payload.DateCommande)}`,
+    `- Date achat : ${cleanMaterielValue(payload.DateAchat)}`,
+    `- Référence : ${cleanMaterielValue(payload.Reference)}`,
+    ``
+  ];
+
+  const suiviSection = [
+    `🕒 Historique des mouvements`,
+    suivis.length
+      ? suivis.slice(0, 15).map((item, index) => {
+          const date = [item.datemouvement, item.heuremouvement]
+            .filter(Boolean)
+            .join(' ');
+
+          return [
+            `${index + 1}. ${cleanMaterielValue(date)}`,
+            `   Type : ${cleanMaterielValue(item.typemvt)}`,
+            `   Raison : ${cleanMaterielValue(item.raison)}`,
+            `   Commentaire : ${cleanMaterielValue(item.commentaire)}`
+          ].join('\n');
+        }).join('\n\n')
+      : '- Aucun mouvement trouvé'
+  ];
+
+  const conclusion = [];
+
+  if (payload.StatusParc) {
+    conclusion.push(`Le matériel est actuellement en statut : ${payload.StatusParc}.`);
+  }
+
+  if (payload.EtatStock) {
+    conclusion.push(`État stock actuel : ${payload.EtatStock}.`);
+  }
+
+  if (payload.localisation) {
+    conclusion.push(`Localisation actuelle : ${payload.localisation}.`);
+  }
+
+  if (suivis.length) {
+    conclusion.push(`${suivis.length} mouvement(s) trouvé(s) dans l’historique.`);
+  }
+
+  if (payload.NoRetour) {
+    conclusion.push(`Un numéro de retour est associé : ${payload.NoRetour}.`);
   }
 
   return [
-    `📦 Historique matériel`,
+    ...mainInfo,
+    ...suiviSection,
     ``,
-    `IMEI / Numéro de série : ${imei}`,
-    ``,
-    `📋 Informations`,
-    ...Object.entries(payload).slice(0, 20).map(([key, value]) => {
-      return `- ${key} : ${cleanMaterielValue(value)}`;
-    })
-  ].join('\n').slice(0, 7000);
+    `🧾 Conclusion support`,
+    conclusion.length
+      ? conclusion.map(x => `- ${x}`).join('\n')
+      : '- Historique matériel récupéré avec succès.'
+  ].join('\n').slice(0, 12000);
 }
 
 function appendTechnicienPromptOnce(replyText) {
