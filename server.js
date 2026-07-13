@@ -1126,6 +1126,35 @@ function cleanMaterielValue(value) {
   return String(value).trim();
 }
 
+function cleanTeamsTableValue(value, max = 120) {
+  const text = cleanMaterielValue(value)
+    .replace(/</g, '‹')
+    .replace(/>/g, '›')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\|/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (text.length <= max) return text;
+
+  return `${text.slice(0, max).trim()}...`;
+}
+
+function formatMaterielDateTime(date, time) {
+  const cleanDate = cleanMaterielValue(date);
+  const cleanTime = cleanMaterielValue(time);
+
+  if (cleanDate === 'Non disponible' && cleanTime === 'Non disponible') {
+    return 'Non disponible';
+  }
+
+  if (cleanTime === '00:00:00.000') {
+    return cleanDate;
+  }
+
+  return `${cleanDate} ${cleanTime}`;
+}
+
 function formatMaterielHistoryForTeams(serialNumber, data) {
   const payload = data?.data || data?.materiel || data?.result || data;
 
@@ -1206,23 +1235,29 @@ function formatMaterielHistoryForTeams(serialNumber, data) {
     ``
   ];
 
-  const suiviSection = [
-    `🕒 Historique des mouvements`,
-    suivis.length
-      ? suivis.slice(0, 15).map((item, index) => {
-          const date = [item.datemouvement, item.heuremouvement]
-            .filter(Boolean)
-            .join(' ');
-
-          return [
-            `${index + 1}. ${cleanMaterielValue(date)}`,
-            `   Type : ${cleanMaterielValue(item.typemvt)}`,
-            `   Raison : ${cleanMaterielValue(item.raison)}`,
-            `   Commentaire : ${cleanMaterielValue(item.commentaire)}`
-          ].join('\n');
-        }).join('\n\n')
-      : '- Aucun mouvement trouvé'
+const mouvementRows = suivis.slice(0, 15).map((item, index) => {
+  return [
+    `${index + 1}`,
+    cleanTeamsTableValue(formatMaterielDateTime(item.datemouvement, item.heuremouvement), 22),
+    cleanTeamsTableValue(item.typemvt, 22),
+    cleanTeamsTableValue(item.raison, 35),
+    cleanTeamsTableValue(item.commentaire, 120)
   ];
+});
+
+const suiviSection = [
+  `🕒 Historique des mouvements`,
+  ``,
+  suivis.length
+    ? [
+        `| # | Date / heure | Type | Raison | Commentaire |`,
+        `|---|---|---|---|---|`,
+        ...mouvementRows.map(row => {
+          return `| ${row[0]} | ${row[1]} | ${row[2]} | ${row[3]} | ${row[4]} |`;
+        })
+      ].join('\n')
+    : '- Aucun mouvement trouvé'
+];
 
   const conclusion = [];
 
