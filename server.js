@@ -1074,12 +1074,12 @@ async function getD4BApiToken() {
 async function getMaterielByImei(imei) {
   const baseUrl =
     process.env.D4B_MATERIEL_API_URL ||
-    'https://d4brestapi.com/V1/ticket/getMateriel';
+    'https://d4brestapi.com/V1/ticket/getMaterielHisto';
 
   const token = await getD4BApiToken();
 
   const url = new URL(baseUrl);
-  url.searchParams.set('mode', 'test');
+  url.searchParams.set('mode', 'prod');
   url.searchParams.set('token', token);
   url.searchParams.set('IMEI', imei);
 
