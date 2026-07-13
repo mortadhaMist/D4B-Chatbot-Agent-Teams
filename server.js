@@ -21,7 +21,7 @@ const MAX_TEAMS_HISTORY_TURNS = 20;
 
 const diagnosticJobs = [];
 const pendingDiagnostics = new Map();
-
+const pendingMaterielLookup = new Map();
 const registeredAgents = new Map();
 const lastDiagnosticDeviceByConversation = new Map();
 
@@ -913,13 +913,157 @@ function getAteraTicketId(data) {
     null;
 }
 
+function isMaterielHistoryRequest(text) {
+  const normalized = normalizeTextForIntent(text);
+
+  return (
+    normalized.includes('historique materiel') ||
+    normalized.includes('historique matériel') ||
+    normalized.includes('historique imei') ||
+    normalized.includes('materiel imei') ||
+    normalized.includes('matériel imei') ||
+    normalized.includes('getmateriel') ||
+    normalized.includes('get materiel') ||
+    normalized.includes('information materiel') ||
+    normalized.includes('info materiel') ||
+    normalized.includes('garantie imei') ||
+    normalized.includes('serie imei') ||
+    normalized.includes('numero de serie') ||
+    normalized.includes('numéro de série')
+  );
+}
+
+function extractImeiFromText(text) {
+  const raw = String(text || '').trim();
+
+  // IMEI is usually 15 digits, but some serials can be alphanumeric.
+  const imeiMatch = raw.match(/\b\d{14,17}\b/);
+  if (imeiMatch) return imeiMatch[0];
+
+  const serialMatch = raw.match(/\b[A-Z0-9][A-Z0-9._-]{5,40}\b/i);
+  if (serialMatch) return serialMatch[0];
+
+  return null;
+}
+
+function formatMaterielPrompt() {
+  return `Tapez le numéro de série [IMEI] pour avoir l’historique.`;
+}
+
+async function getMaterielByImei(imei) {
+  const baseUrl = process.env.D4B_MATERIEL_API_URL || 'https://d4brestapi.com/V1/ticket/getMateriel';
+
+  const url = new URL(baseUrl);
+
+  // If your API expects a different parameter name, change "imei" here.
+ url.searchParams.set('IMEI', imei);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Authorization: process.env.D4B_MATERIEL_AUTHORIZATION || '',
+      AuthKey: process.env.D4B_MATERIEL_AUTHKEY || '',
+      Accept: 'application/json'
+    }
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const bodyText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`API matériel ${response.status}: ${bodyText.slice(0, 500)}`);
+  }
+
+  if (contentType.includes('application/json')) {
+    try {
+      return JSON.parse(bodyText);
+    } catch {
+      return { raw: bodyText };
+    }
+  }
+
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return { raw: bodyText };
+  }
+}
+
+function cleanMaterielValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return 'Non disponible';
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+
+  return String(value).trim();
+}
+
+function formatMaterielHistoryForTeams(imei, data) {
+  const payload = data?.data || data?.materiel || data?.result || data;
+
+  if (!payload) {
+    return [
+      `📦 Historique matériel`,
+      ``,
+      `IMEI / Numéro de série : ${imei}`,
+      ``,
+      `Aucune information matériel trouvée pour ce numéro.`
+    ].join('\n');
+  }
+
+  if (Array.isArray(payload)) {
+    if (!payload.length) {
+      return [
+        `📦 Historique matériel`,
+        ``,
+        `IMEI / Numéro de série : ${imei}`,
+        ``,
+        `Aucun historique trouvé.`
+      ].join('\n');
+    }
+
+    return [
+      `📦 Historique matériel`,
+      ``,
+      `IMEI / Numéro de série : ${imei}`,
+      `Éléments trouvés : ${payload.length}`,
+      ``,
+      payload.slice(0, 5).map((item, index) => {
+        return [
+          `${index + 1}. Élément matériel`,
+          ...Object.entries(item).slice(0, 12).map(([key, value]) => {
+            return `- ${key} : ${cleanMaterielValue(value)}`;
+          })
+        ].join('\n');
+      }).join('\n\n')
+    ].join('\n').slice(0, 7000);
+  }
+
+  return [
+    `📦 Historique matériel`,
+    ``,
+    `IMEI / Numéro de série : ${imei}`,
+    ``,
+    `📋 Informations`,
+    ...Object.entries(payload).slice(0, 20).map(([key, value]) => {
+      return `- ${key} : ${cleanMaterielValue(value)}`;
+    })
+  ].join('\n').slice(0, 7000);
+}
+
 function appendTechnicienPromptOnce(replyText) {
-  const prompt = '🎫 Pour créer un ticket, écrivez « ticket ».';
+  const ticketPrompt = '🎫 Pour créer un ticket, écrivez « ticket ».';
+  const materielPrompt = '📦 Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série [IMEI].';
+
   const cleaned = String(replyText || '')
     .replace(/🎫\s*Pour créer un ticket, écrivez « ticket »\.?/gi, '')
+    .replace(/📦\s*Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série \[IMEI\]\.?/gi, '')
     .trim();
 
-  return `${cleaned}\n\n\u200B\n\n${prompt}`;
+  return `${cleaned}\n\n\u200B\n\n${ticketPrompt}\n${materielPrompt}`;
 }
 let teamsAdapter = null;
 let teamsBotHandler = null;
@@ -1035,7 +1179,83 @@ const teamsConversationKey =
   context.activity.conversation?.id ||
   context.activity.from?.id ||
   `teams-${Date.now()}`;
+const pendingMateriel = pendingMaterielLookup.get(teamsConversationKey);
 
+if (pendingMateriel) {
+  const imei = extractImeiFromText(text);
+
+  if (!imei) {
+    await context.sendActivity(
+      `${formatMaterielPrompt()}\n\nExemple : 356789123456789`
+    );
+    await next();
+    return;
+  }
+
+  try {
+    await context.sendActivity(`Recherche de l’historique matériel pour : ${imei}...`);
+
+    const materielData = await getMaterielByImei(imei);
+    const replyText = formatMaterielHistoryForTeams(imei, materielData);
+
+    pendingMaterielLookup.delete(teamsConversationKey);
+    saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+
+    await context.sendActivity(replyText);
+  } catch (error) {
+    console.error('Materiel API lookup failed:', error);
+
+    pendingMaterielLookup.delete(teamsConversationKey);
+
+    await context.sendActivity(
+      `Impossible de récupérer l’historique matériel pour ${imei}.\n\n` +
+      `Erreur technique : ${error.message || error}`
+    );
+  }
+
+  await next();
+  return;
+}
+
+if (isMaterielHistoryRequest(text)) {
+  const imei = extractImeiFromText(text);
+
+  if (imei) {
+    try {
+      await context.sendActivity(`Recherche de l’historique matériel pour : ${imei}...`);
+
+      const materielData = await getMaterielByImei(imei);
+      const replyText = formatMaterielHistoryForTeams(imei, materielData);
+
+      saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+      await context.sendActivity(replyText);
+    } catch (error) {
+      console.error('Materiel API lookup failed:', error);
+
+      await context.sendActivity(
+        `Impossible de récupérer l’historique matériel pour ${imei}.\n\n` +
+        `Erreur technique : ${error.message || error}`
+      );
+    }
+
+    await next();
+    return;
+  }
+
+  pendingMaterielLookup.set(teamsConversationKey, {
+    requestedAt: new Date().toISOString(),
+    requestedByName: userName,
+    requestedByEmail: userEmail
+  });
+
+  const replyText = formatMaterielPrompt();
+
+  saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+  await context.sendActivity(replyText);
+
+  await next();
+  return;
+}
 // Message d'accueil seulement au début si l'utilisateur dit juste bonjour
 // Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
