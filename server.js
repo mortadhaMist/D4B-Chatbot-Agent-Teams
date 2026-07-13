@@ -944,12 +944,38 @@ function isMaterielHistoryRequest(text) {
 function extractImeiFromText(text) {
   const raw = String(text || '').trim();
 
-  // IMEI is usually 15 digits, but some serials can be alphanumeric.
+  // Do not treat trigger words as serial numbers.
+  const normalized = normalizeTextForIntent(raw);
+  if (
+    normalized === 'historique materiel' ||
+    normalized === 'historique matériel' ||
+    normalized === 'historique imei' ||
+    normalized === 'imei' ||
+    normalized === 'serial' ||
+    normalized === 'numero de serie' ||
+    normalized === 'numéro de série'
+  ) {
+    return null;
+  }
+
+  // Real IMEI: usually 15 digits.
   const imeiMatch = raw.match(/\b\d{14,17}\b/);
   if (imeiMatch) return imeiMatch[0];
 
-  const serialMatch = raw.match(/\b[A-Z0-9][A-Z0-9._-]{5,40}\b/i);
-  if (serialMatch) return serialMatch[0];
+  // Serial only when explicitly labelled.
+  const labeledSerial = raw.match(
+    /\b(?:imei|serial|numero de serie|numéro de série|serie|série)\s*[:=\-]?\s*([A-Z0-9][A-Z0-9._-]{5,40})\b/i
+  );
+
+  if (labeledSerial) {
+    return labeledSerial[1].toUpperCase();
+  }
+
+  // If user sends only the serial number.
+  // Example: R58W41NQJ3A
+  if (/^[A-Z0-9][A-Z0-9._-]{5,40}$/i.test(raw) && /\d/.test(raw)) {
+    return raw.toUpperCase();
+  }
 
   return null;
 }
@@ -1005,22 +1031,14 @@ async function getD4BApiToken() {
     process.env.D4B_AUTH_API_URL ||
     'https://d4brestapi.com/V1/authentification/test';
 
-  const authorization =
-    process.env.D4B_MATERIEL_AUTHORIZATION ||
-    process.env.AUTHORIZATION ||
-    '';
-
-  const authKey =
-    process.env.D4B_MATERIEL_AUTHKEY ||
-    process.env.AUTHKEY ||
-    '';
-
   const response = await fetch(authUrl, {
     method: 'GET',
     headers: {
-      Authorization: authorization,
-      AuthKey: authKey,
-      Accept: 'application/json'
+      Authorization: process.env.AUTHORIZATION || '',
+      AuthKey: process.env.AUTHKEY || '',
+
+      // IMPORTANT: this API returns text/plain, not application/json.
+      Accept: 'text/plain, */*'
     }
   });
 
@@ -1031,28 +1049,28 @@ async function getD4BApiToken() {
     throw new Error(`Auth API ${response.status}: ${bodyText.slice(0, 500)}`);
   }
 
-  let data = null;
+  let token = '';
 
   if (contentType.includes('application/json')) {
-    data = JSON.parse(bodyText);
-  } else {
     try {
-      data = JSON.parse(bodyText);
+      const data = JSON.parse(bodyText);
+      token = extractD4BToken(data);
     } catch {
-      data = { token: bodyText };
+      token = '';
     }
+  } else {
+    // Auth API returns the token directly as text/plain.
+    token = String(bodyText || '').trim();
   }
 
-  const token = extractD4BToken(data);
-
   if (!token) {
-    console.error('[D4B Auth API] Réponse sans token:', data);
+    console.error('[D4B Auth API] Réponse sans token:', bodyText.slice(0, 300));
     throw new Error('Auth API: token non trouvé dans la réponse.');
   }
 
   d4bApiTokenCache = {
     token,
-    expiresAt: Date.now() + getD4BTokenTtlMs(data)
+    expiresAt: Date.now() + 25 * 60 * 1000
   };
 
   return token;
@@ -1065,84 +1083,52 @@ async function getMaterielByImei(imei) {
 
   const token = await getD4BApiToken();
 
-  const parameterNames = [
-    'IMEI',
-    'imei',
-    'Imei',
-    'numSerie',
-    'NumSerie',
-    'numeroSerie',
-    'serial',
-    'serialNumber'
-  ];
+  const url = new URL(baseUrl);
+  url.searchParams.set('mode', 'test');
+  url.searchParams.set('token', token);
+  url.searchParams.set('IMEI', imei);
 
-  const attempts = [];
+  console.log('[Materiel API] Trying:', {
+    url: url.toString().replace(token, '***TOKEN***'),
+    hasToken: !!token
+  });
 
-  for (const parameterName of parameterNames) {
-    const url = new URL(baseUrl);
-
-    url.searchParams.set('mode', 'test');
-    url.searchParams.set('token', token);
-    url.searchParams.set(parameterName, imei);
-
-    console.log('[Materiel API] Trying:', {
-      url: url.toString().replace(token, '***TOKEN***'),
-      parameterName,
-      hasToken: !!token
-    });
-
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json'
-      }
-    });
-
-    const contentType = response.headers.get('content-type') || '';
-    const bodyText = await response.text();
-
-    attempts.push({
-      parameterName,
-      status: response.status,
-      body: bodyText.slice(0, 300)
-    });
-
-    if (response.ok) {
-      if (contentType.includes('application/json')) {
-        try {
-          return JSON.parse(bodyText);
-        } catch {
-          return { raw: bodyText };
-        }
-      }
-
-      try {
-        return JSON.parse(bodyText);
-      } catch {
-        return { raw: bodyText };
-      }
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Accept: 'text/plain, application/json, */*'
     }
+  });
 
+  const contentType = response.headers.get('content-type') || '';
+  const bodyText = await response.text();
+
+  if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       d4bApiTokenCache = {
         token: null,
         expiresAt: 0
       };
-
-      throw new Error(`API matériel ${response.status}: token refusé ou expiré.`);
     }
 
-    if (response.status !== 400) {
-      throw new Error(`API matériel ${response.status}: ${bodyText.slice(0, 500)}`);
+    throw new Error(`API matériel ${response.status}: ${bodyText.slice(0, 500)}`);
+  }
+
+  if (contentType.includes('application/json')) {
+    try {
+      return JSON.parse(bodyText);
+    } catch {
+      return { raw: bodyText };
     }
   }
 
-  console.error('[Materiel API] All parameter attempts failed:', attempts);
-
-  throw new Error(
-    `API matériel 400: aucun nom de paramètre IMEI accepté. Paramètres testés : ${parameterNames.join(', ')}`
-  );
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return { raw: bodyText };
+  }
 }
+
 
 function cleanMaterielValue(value) {
   if (value === null || value === undefined || value === '') {
