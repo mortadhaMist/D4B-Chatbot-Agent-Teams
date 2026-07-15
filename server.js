@@ -5731,7 +5731,39 @@ res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-AP
       return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
     }
   }
+// Download CSV exports
+if (req.method === 'GET' && pathname.startsWith('/exports/')) {
+  const filename = decodeURIComponent(pathname.replace('/exports/', ''));
 
+  if (!/^[a-zA-Z0-9_.-]+\.csv$/.test(filename)) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Nom de fichier invalide.');
+    return;
+  }
+
+  const filePath = path.join(EXPORTS_DIR, filename);
+
+  if (!filePath.startsWith(EXPORTS_DIR)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Accès interdit.');
+    return;
+  }
+
+  if (!fs.existsSync(filePath)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Fichier introuvable.');
+    return;
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Cache-Control': 'no-store'
+  });
+
+  fs.createReadStream(filePath).pipe(res);
+  return;
+}
   // Handle static files
   if (pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -5765,21 +5797,7 @@ res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-AP
   });
 });
 
-app.get('/exports/:filename', (req, res) => {
-  const filename = String(req.params.filename || '');
 
-  if (!/^[a-zA-Z0-9_.-]+\.csv$/.test(filename)) {
-    return res.status(400).send('Nom de fichier invalide.');
-  }
-
-  const filePath = path.join(EXPORTS_DIR, filename);
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send('Fichier introuvable.');
-  }
-
-  res.download(filePath, filename);
-});
 
 server.listen(PORT, async () => {
   console.log(` Server running at http://localhost:${PORT}`);
