@@ -980,9 +980,6 @@ function extractImeiFromText(text) {
   return null;
 }
 
-function formatMaterielPrompt() {
-  return `Tapez le numéro de série [SN] pour avoir l’historique.`;
-}
 
 function formatMaterielMenu() {
   return [
@@ -991,6 +988,7 @@ function formatMaterielMenu() {
     `Choisissez une option en tapant le numéro correspondant :`,
     ``,
     `1 - Historique matériel`,
+    ``,
     `2 - Inventaire par emplacement (liste des matériels)`
   ].join('\n');
 }
@@ -1718,20 +1716,25 @@ if (isMaterielHistoryRequest(text)) {
 // Message d'accueil seulement au début si l'utilisateur dit juste bonjour
 // Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
-  const welcomeParts = [
-    `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)`,
+ const welcomeParts = [
+  `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)`,
 
-    `Voici ce que je peux faire pour vous :`,
+  `Voici ce que je peux faire pour vous :`,
 
-    `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.`,
+  `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.`,
 
-    `Pour commencer, dites-moi ce qui ne va pas 👇`,
+  `Pour commencer, dites-moi ce qui ne va pas 👇`,
 
-    `🎫 Pour créer un ticket, écrivez « ticket ».`,
+  `🎫 Pour créer un ticket, écrivez « ticket ».`,
 
-
-`📦 Pour accéder au module matériel, écrivez « matériel ».\n\n1 - Historique matériel\n2 - Inventaire par emplacement (liste des matériels)`
-  ];
+  [
+    `📦 Pour accéder au module matériel, écrivez « matériel ».`,
+    ``,
+    `1 - Historique matériel`,
+    ``,
+    `2 - Inventaire par emplacement (liste des matériels)`
+  ].join('\n')
+];
 
   const welcomeText = welcomeParts.join('\n\n');
 
