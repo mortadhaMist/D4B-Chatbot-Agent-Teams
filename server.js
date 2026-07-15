@@ -1293,51 +1293,32 @@ function formatSuiviChronopostForTeams(sRefEnvoi, data) {
     return [
       `🚚 Suivi Chronopost`,
       ``,
-      `🔎 Référence d’envoi : ${sRefEnvoi}`,
+      `🔎 Numéro de colis : ${sRefEnvoi}`,
       `Résultat : ${description}`,
       `Statut : ${status}`,
       ``,
-      `Aucun suivi trouvé pour cette référence.`
+      `Aucun suivi trouvé pour ce numéro de colis.`
     ].join('\n');
   }
 
-  const lines = rawResult
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean);
+  const parsed = parseChronopostEvents(rawResult);
 
-  const eventRows = [];
-  let receiverName = null;
-
-  for (const line of lines) {
-    const receiverMatch = line.match(/nom du réceptionnaire\s*:\s*(.+)$/i);
-
-    if (receiverMatch) {
-      receiverName = receiverMatch[1].trim();
-      continue;
-    }
-
-    const eventMatch = line.match(/^(.+?)\s*-\s*(.+)$/);
-
-    if (eventMatch) {
-      eventRows.push([
-        cleanTeamsTableValue(eventMatch[1], 22),
-        cleanTeamsTableValue(eventMatch[2], 80)
-      ]);
-    } else {
-      eventRows.push([
-        'Non disponible',
-        cleanTeamsTableValue(line, 80)
-      ]);
-    }
-  }
+  const eventRows = parsed.events.map(event => {
+    return [
+      cleanTeamsTableValue(event.dateHeure || 'Non disponible', 22),
+      cleanTeamsTableValue(event.evenement, 80)
+    ];
+  });
 
   const lastEvent = eventRows.length ? eventRows[eventRows.length - 1][1] : 'Non disponible';
+
+  const exportInfo = createChronopostCsvExport(sRefEnvoi, payload);
+  const csvFullUrl = `${getPublicBaseUrl()}${exportInfo.downloadUrl}`;
 
   return [
     `🚚 Suivi Chronopost`,
     ``,
-    `🔎 Référence d’envoi : ${sRefEnvoi}`,
+    `🔎 Numéro de colis : ${sRefEnvoi}`,
     `Résultat : ${description}`,
     `Statut : ${status}`,
     ``,
@@ -1353,14 +1334,17 @@ function formatSuiviChronopostForTeams(sRefEnvoi, data) {
     `- ${lastEvent}`,
     ``,
 
-    receiverName
-      ? `👤 Réceptionnaire\n- ${cleanTeamsTableValue(receiverName, 60)}`
+    parsed.receiverName
+      ? `👤 Réceptionnaire\n- ${cleanTeamsTableValue(parsed.receiverName, 60)}`
       : `👤 Réceptionnaire\n- Non disponible`,
 
     ``,
+    `⬇️ Télécharger le CSV : ${csvFullUrl}`,
+    ``,
+
     `🧾 Conclusion support`,
-    receiverName
-      ? `- Livraison effectuée. Réceptionnaire : ${receiverName}.`
+    parsed.receiverName
+      ? `- Livraison effectuée. Réceptionnaire : ${parsed.receiverName}.`
       : `- Suivi Chronopost récupéré avec succès.`
   ].join('\n').slice(0, 12000);
 }
@@ -1691,6 +1675,102 @@ function getPublicBaseUrl() {
     process.env.RENDER_EXTERNAL_URL ||
     `http://127.0.0.1:${PORT}`
   ).replace(/\/+$/, '');
+}
+
+function parseChronopostEvents(rawResult) {
+  const lines = String(rawResult || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const events = [];
+  let receiverName = null;
+
+  for (const line of lines) {
+    const receiverMatch = line.match(/nom du réceptionnaire\s*:\s*(.+)$/i);
+
+    if (receiverMatch) {
+      receiverName = receiverMatch[1].trim();
+      continue;
+    }
+
+    const eventMatch = line.match(/^(.+?)\s*-\s*(.+)$/);
+
+    if (eventMatch) {
+      events.push({
+        dateHeure: eventMatch[1].trim(),
+        evenement: eventMatch[2].trim()
+      });
+    } else {
+      events.push({
+        dateHeure: '',
+        evenement: line
+      });
+    }
+  }
+
+  return {
+    events,
+    receiverName
+  };
+}
+
+function buildChronopostCsv(sRefEnvoi, payload) {
+  const rawResult = String(payload?.sResultat || payload?.SResultat || '').trim();
+  const parsed = parseChronopostEvents(rawResult);
+
+  const headerRows = [
+    ['Section', 'Champ', 'Valeur'],
+    ['Recherche', 'NumeroColis', sRefEnvoi],
+    ['Recherche', 'Resultat', payload?.description],
+    ['Recherche', 'Statut', payload?.statutsRep],
+    ['Livraison', 'Receptionnaire', parsed.receiverName || '']
+  ];
+
+  const eventHeader = [
+    'Index',
+    'DateHeure',
+    'Evenement'
+  ];
+
+  const eventRows = parsed.events.map((event, index) => {
+    return [
+      index + 1,
+      event.dateHeure,
+      event.evenement
+    ];
+  });
+
+  return [
+    ...headerRows.map(row => row.map(csvEscape).join(';')),
+    '',
+    ['Historique Chronopost'].map(csvEscape).join(';'),
+    eventHeader.map(csvEscape).join(';'),
+    ...eventRows.map(row => row.map(csvEscape).join(';'))
+  ].join('\r\n');
+}
+
+function createChronopostCsvExport(sRefEnvoi, payload) {
+  ensureExportsDir();
+
+  const safeRef = String(sRefEnvoi || 'chronopost')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 60);
+
+  const exportId = `${safeRef}-${Date.now()}`;
+  const filename = `suivi-chronopost-${exportId}.csv`;
+  const filePath = path.join(EXPORTS_DIR, filename);
+
+  const csv = buildChronopostCsv(sRefEnvoi, payload);
+
+  // UTF-8 BOM helps Excel open accents correctly.
+  fs.writeFileSync(filePath, `\uFEFF${csv}`, 'utf8');
+
+  return {
+    filename,
+    filePath,
+    downloadUrl: `/exports/${encodeURIComponent(filename)}`
+  };
 }
 
 function formatInventaireEmplacementForTeams(emplacement, data) {
