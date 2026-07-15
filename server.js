@@ -799,7 +799,7 @@ function isGreetingOnly(text) {
 
 function isCreateTicketRequest(text) {
   const normalized = normalizeTextForIntent(text);
-  return /^(technicien|ticket|creer ticket|cree ticket|ouvrir ticket|ouvrir un ticket|1)$/i.test(normalized);
+  return /^(technicien|ticket|creer ticket|cree ticket|ouvrir ticket|ouvrir un ticket)$/i.test(normalized);
 }
 
 function getTeamsConversationHistory(key) {
@@ -981,7 +981,61 @@ function extractImeiFromText(text) {
 }
 
 function formatMaterielPrompt() {
-  return `Tapez le numéro de série [SN] ou l’IMEI pour avoir l’historique.`;
+  return `Tapez le numéro de série [SN] pour avoir l’historique.`;
+}
+
+function formatMaterielMenu() {
+  return [
+    `📦 Module matériel`,
+    ``,
+    `Choisissez une option en tapant le numéro correspondant :`,
+    ``,
+    `1 - Historique matériel`,
+    `2 - Inventaire par emplacement (liste des matériels)`
+  ].join('\n');
+}
+
+function formatMaterielPrompt() {
+  return `Tapez le numéro de série [SN] pour avoir l’historique.`;
+}
+
+function formatInventaireEmplacementPrompt() {
+  return `Tapez l’emplacement pour afficher la liste des matériels.`;
+}
+
+function isMaterielMenuRequest(text) {
+  const normalized = normalizeTextForIntent(text);
+
+  return (
+    normalized === 'materiel' ||
+    normalized === 'matériel' ||
+    normalized === 'menu materiel' ||
+    normalized === 'menu matériel' ||
+    normalized === 'historique materiel' ||
+    normalized === 'historique matériel' ||
+    normalized.includes('inventaire par emplacement') ||
+    normalized.includes('inventaire materiel') ||
+    normalized.includes('inventaire matériel')
+  );
+}
+
+function extractEmplacementFromText(text) {
+  const raw = String(text || '').trim();
+
+  if (!raw) return null;
+
+  const normalized = normalizeTextForIntent(raw);
+
+  if (
+    normalized === '2' ||
+    normalized === 'inventaire' ||
+    normalized === 'inventaire par emplacement' ||
+    normalized === 'emplacement'
+  ) {
+    return null;
+  }
+
+  return raw.toUpperCase();
 }
 
 function extractD4BToken(data) {
@@ -1105,6 +1159,49 @@ async function getMaterielByImei(serialNumber) {
 
   if (!response.ok) {
     throw new Error(`API matériel ${response.status}: ${bodyText.slice(0, 500)}`);
+  }
+
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return { raw: bodyText };
+  }
+}
+
+async function getInventaireByEmplacement(emplacement) {
+  const baseUrl =
+    process.env.D4B_INVENTAIRE_EMPLACEMENT_API_URL ||
+    'https://d4brestapi.com/V1/ticket/getInventaireEmplacement';
+
+  const token = await getD4BApiToken();
+
+  const url = new URL(baseUrl);
+
+  url.searchParams.set('token', token);
+  url.searchParams.set('mode', process.env.D4B_MATERIEL_MODE || 'prod');
+
+  const emplacementParam =
+    process.env.D4B_INVENTAIRE_EMPLACEMENT_PARAM || 'emplacement';
+
+  url.searchParams.set(emplacementParam, emplacement);
+
+  console.log('[Inventaire Emplacement API] Trying:', {
+    url: url.toString().replace(token, '***TOKEN***'),
+    hasToken: !!token,
+    emplacement
+  });
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json, text/plain, */*'
+    }
+  });
+
+  const bodyText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`API inventaire emplacement ${response.status}: ${bodyText.slice(0, 500)}`);
   }
 
   try {
@@ -1292,6 +1389,50 @@ const suiviSection = [
   ].join('\n').slice(0, 12000);
 }
 
+function formatInventaireEmplacementForTeams(emplacement, data) {
+  const payload = data?.data || data?.materiels || data?.materiel || data?.result || data;
+  const items = Array.isArray(payload) ? payload : Array.isArray(payload?.items) ? payload.items : [];
+
+  if (!items.length) {
+    return [
+      `📦 Inventaire par emplacement`,
+      ``,
+      `📍 Emplacement : ${emplacement}`,
+      ``,
+      `Aucun matériel trouvé pour cet emplacement.`
+    ].join('\n');
+  }
+
+  const rows = items.slice(0, 30).map((item, index) => {
+    return [
+      `${index + 1}`,
+      cleanTeamsTableValue(item.NoSerie || item.Serial || item.SN || item.numeroSerie || item.NumeroSerie, 25),
+      cleanTeamsTableValue(item.IMEI || item.imei, 18),
+      cleanTeamsTableValue(item.MARQUE || item.Marque || item.brand, 18),
+      cleanTeamsTableValue(item.MODEL || item.Modele || item.model, 28),
+      cleanTeamsTableValue(item.StatusParc || item.Statut || item.status, 28),
+      cleanTeamsTableValue(item.Matricule || item.matricule, 22)
+    ];
+  });
+
+  return [
+    `📦 Inventaire par emplacement`,
+    ``,
+    `📍 Emplacement : ${emplacement}`,
+    `Matériels trouvés : ${items.length}`,
+    ``,
+    `| # | SN | IMEI | Marque | Modèle | Statut | Matricule |`,
+    `|---|---|---|---|---|---|---|`,
+    ...rows.map(row => {
+      return `| ${row[0]} | ${row[1]} | ${row[2]} | ${row[3]} | ${row[4]} | ${row[5]} | ${row[6]} |`;
+    }),
+    ``,
+    items.length > 30
+      ? `Liste limitée aux 30 premiers matériels.`
+      : `Inventaire complet affiché.`
+  ].join('\n').slice(0, 12000);
+}
+
 function appendTechnicienPromptOnce(replyText) {
   const ticketPrompt = '🎫 Pour créer un ticket, écrivez « ticket ».';
   const materielPrompt = '📦 Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série.';
@@ -1420,36 +1561,120 @@ const teamsConversationKey =
 const pendingMateriel = pendingMaterielLookup.get(teamsConversationKey);
 
 if (pendingMateriel) {
-  const imei = extractImeiFromText(text);
+  if (pendingMateriel.type === 'history') {
+    const serialNumber = extractImeiFromText(text);
 
-  if (!imei) {
-    await context.sendActivity(
-      `${formatMaterielPrompt()}\n\nExemple : 356789123456789`
-    );
+    if (!serialNumber) {
+      await context.sendActivity(
+        `${formatMaterielPrompt()}\n\nExemple : R58W41NQJ3A`
+      );
+      await next();
+      return;
+    }
+
+    try {
+      await context.sendActivity(`Recherche de l’historique matériel pour : ${serialNumber}...`);
+
+      const materielData = await getMaterielByImei(serialNumber);
+      const replyText = formatMaterielHistoryForTeams(serialNumber, materielData);
+
+      pendingMaterielLookup.delete(teamsConversationKey);
+      saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+
+      await context.sendActivity(replyText);
+    } catch (error) {
+      console.error('Materiel API lookup failed:', error);
+
+      pendingMaterielLookup.delete(teamsConversationKey);
+
+      await context.sendActivity(
+        `Impossible de récupérer l’historique matériel pour ${serialNumber}.\n\n` +
+        `Erreur technique : ${error.message || error}`
+      );
+    }
+
     await next();
     return;
   }
 
-  try {
-    await context.sendActivity(`Recherche de l’historique matériel pour : ${imei}...`);
+  if (pendingMateriel.type === 'inventory_location') {
+    const emplacement = extractEmplacementFromText(text);
 
-    const materielData = await getMaterielByImei(imei);
-    const replyText = formatMaterielHistoryForTeams(imei, materielData);
+    if (!emplacement) {
+      await context.sendActivity(
+        `${formatInventaireEmplacementPrompt()}\n\nExemple : DDCARE3ET1`
+      );
+      await next();
+      return;
+    }
 
-    pendingMaterielLookup.delete(teamsConversationKey);
-    saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+    try {
+      await context.sendActivity(`Recherche de l’inventaire pour l’emplacement : ${emplacement}...`);
 
-    await context.sendActivity(replyText);
-  } catch (error) {
-    console.error('Materiel API lookup failed:', error);
+      const inventaireData = await getInventaireByEmplacement(emplacement);
+      const replyText = formatInventaireEmplacementForTeams(emplacement, inventaireData);
 
-    pendingMaterielLookup.delete(teamsConversationKey);
+      pendingMaterielLookup.delete(teamsConversationKey);
+      saveTeamsConversationTurn(teamsConversationKey, text, replyText);
 
-    await context.sendActivity(
-      `Impossible de récupérer l’historique matériel pour ${imei}.\n\n` +
-      `Erreur technique : ${error.message || error}`
-    );
+      await context.sendActivity(replyText);
+    } catch (error) {
+      console.error('Inventaire emplacement API lookup failed:', error);
+
+      pendingMaterielLookup.delete(teamsConversationKey);
+
+      await context.sendActivity(
+        `Impossible de récupérer l’inventaire pour l’emplacement ${emplacement}.\n\n` +
+        `Erreur technique : ${error.message || error}`
+      );
+    }
+
+    await next();
+    return;
   }
+}
+
+const normalizedMaterielChoice = normalizeTextForIntent(text);
+
+if (normalizedMaterielChoice === '1') {
+  pendingMaterielLookup.set(teamsConversationKey, {
+    type: 'history',
+    requestedAt: new Date().toISOString(),
+    requestedByName: userName,
+    requestedByEmail: userEmail
+  });
+
+  const replyText = formatMaterielPrompt();
+
+  saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+  await context.sendActivity(replyText);
+
+  await next();
+  return;
+}
+
+if (normalizedMaterielChoice === '2') {
+  pendingMaterielLookup.set(teamsConversationKey, {
+    type: 'inventory_location',
+    requestedAt: new Date().toISOString(),
+    requestedByName: userName,
+    requestedByEmail: userEmail
+  });
+
+  const replyText = formatInventaireEmplacementPrompt();
+
+  saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+  await context.sendActivity(replyText);
+
+  await next();
+  return;
+}
+
+if (isMaterielMenuRequest(text)) {
+  const replyText = formatMaterielMenu();
+
+  saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+  await context.sendActivity(replyText);
 
   await next();
   return;
@@ -1509,7 +1734,7 @@ if (isGreetingOnly(text)) {
     `🎫 Pour créer un ticket, écrivez « ticket ».`,
 
 
-`📦 Pour consulter l’historique matériel, écrivez « historique matériel », puis tapez le numéro de série.`
+`📦 Pour accéder au module matériel, écrivez « matériel ».\n\n1 - Historique matériel\n2 - Inventaire par emplacement (liste des matériels)`
   ];
 
   const welcomeText = welcomeParts.join('\n\n');
