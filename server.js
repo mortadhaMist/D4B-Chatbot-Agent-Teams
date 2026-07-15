@@ -1288,7 +1288,9 @@ function formatMaterielHistoryForTeams(serialNumber, data) {
   }
 
   const suivis = Array.isArray(payload.lstSuivi) ? payload.lstSuivi : [];
-
+  
+const exportInfo = createMaterielHistoryCsvExport(serialNumber, payload, suivis);
+const csvFullUrl = `${getPublicBaseUrl()}${exportInfo.downloadUrl}`;
   const mainInfo = [
     `📦 Historique matériel`,
     ``,
@@ -1372,15 +1374,17 @@ const suiviSection = [
     conclusion.push(`Un numéro de retour est associé : ${payload.NoRetour}.`);
   }
 
-  return [
-    ...mainInfo,
-    ...suiviSection,
-    ``,
-    `🧾 Conclusion support`,
-    conclusion.length
-      ? conclusion.map(x => `- ${x}`).join('\n')
-      : '- Historique matériel récupéré avec succès.'
-  ].join('\n').slice(0, 12000);
+return [
+  ...mainInfo,
+  ...suiviSection,
+  ``,
+  `⬇️ Télécharger le CSV : ${csvFullUrl}`,
+  ``,
+  `🧾 Conclusion support`,
+  conclusion.length
+    ? conclusion.map(x => `- ${x}`).join('\n')
+    : '- Historique matériel récupéré avec succès.'
+].join('\n').slice(0, 12000);
 }
 
 function ensureExportsDir() {
@@ -1456,7 +1460,83 @@ function createInventoryCsvExport(emplacement, items) {
     downloadUrl: `/exports/${encodeURIComponent(filename)}`
   };
 }
+function buildMaterielHistoryCsv(serialNumber, payload, suivis) {
+  const infoRows = [
+    ['Section', 'Champ', 'Valeur'],
+    ['Recherche', 'NumeroSerieSaisi', serialNumber],
+    ['Recherche', 'Resultat', payload.description || payload.statutsRep],
+    ['Materiel', 'Client', payload.NomClient],
+    ['Materiel', 'Marque', payload.MARQUE],
+    ['Materiel', 'Modele', payload.MODEL],
+    ['Materiel', 'IMEI', payload.IMEI],
+    ['Materiel', 'NumeroSerie', payload.NoSerie],
+    ['Materiel', 'Matricule', payload.Matricule],
+    ['Materiel', 'Utilisateur', payload.NomUtilisateur],
+    ['EtatActuel', 'StatutParc', payload.StatusParc],
+    ['EtatActuel', 'EtatStock', payload.EtatStock],
+    ['EtatActuel', 'Localisation', payload.localisation],
+    ['EtatActuel', 'CauseEntree', payload.CausEntree],
+    ['EtatActuel', 'Service', payload.Service],
+    ['EtatActuel', 'Information', payload.Information],
+    ['References', 'NoSWAP', payload.NoSWAP],
+    ['References', 'NoRetour', payload.NoRetour],
+    ['References', 'NoCommande', payload.NoCommande],
+    ['References', 'DateCommande', payload.DateCommande],
+    ['References', 'DateAchat', payload.DateAchat],
+    ['References', 'Reference', payload.Reference]
+  ];
 
+  const mouvementHeader = [
+    'Index',
+    'DateMouvement',
+    'HeureMouvement',
+    'TypeMouvement',
+    'Raison',
+    'Commentaire'
+  ];
+
+  const mouvementRows = suivis.map((item, index) => {
+    return [
+      index + 1,
+      item.datemouvement,
+      item.heuremouvement,
+      item.typemvt,
+      item.raison,
+      item.commentaire
+    ];
+  });
+
+  return [
+    ...infoRows.map(row => row.map(csvEscape).join(';')),
+    '',
+    ['Historique des mouvements'].map(csvEscape).join(';'),
+    mouvementHeader.map(csvEscape).join(';'),
+    ...mouvementRows.map(row => row.map(csvEscape).join(';'))
+  ].join('\r\n');
+}
+
+function createMaterielHistoryCsvExport(serialNumber, payload, suivis) {
+  ensureExportsDir();
+
+  const safeSerialNumber = String(serialNumber || payload?.NoSerie || 'materiel')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 60);
+
+  const exportId = `${safeSerialNumber}-${Date.now()}`;
+  const filename = `historique-materiel-${exportId}.csv`;
+  const filePath = path.join(EXPORTS_DIR, filename);
+
+  const csv = buildMaterielHistoryCsv(serialNumber, payload, suivis);
+
+  // UTF-8 BOM helps Excel open accents correctly.
+  fs.writeFileSync(filePath, `\uFEFF${csv}`, 'utf8');
+
+  return {
+    filename,
+    filePath,
+    downloadUrl: `/exports/${encodeURIComponent(filename)}`
+  };
+}
 function getPublicBaseUrl() {
   return String(
     process.env.PUBLIC_BASE_URL ||
