@@ -1384,46 +1384,99 @@ const suiviSection = [
 }
 
 function formatInventaireEmplacementForTeams(emplacement, data) {
-  const payload = data?.data || data?.materiels || data?.materiel || data?.result || data;
-  const items = Array.isArray(payload) ? payload : Array.isArray(payload?.items) ? payload.items : [];
+  const payload = data?.data || data?.result || data;
+  const items = Array.isArray(payload?.lstSuivi)
+    ? payload.lstSuivi
+    : Array.isArray(payload)
+      ? payload
+      : [];
+
+  const emplacementApi = cleanMaterielValue(payload?.EmplacementMat || emplacement);
+  const status = cleanMaterielValue(payload?.statutsRep);
+  const description = cleanMaterielValue(payload?.description);
 
   if (!items.length) {
     return [
       `📦 Inventaire par emplacement`,
       ``,
-      `📍 Emplacement : ${emplacement}`,
+      `📍 Emplacement : ${emplacementApi}`,
+      `Résultat : ${description}`,
+      `Statut : ${status}`,
       ``,
       `Aucun matériel trouvé pour cet emplacement.`
     ].join('\n');
   }
 
+  const total = items.length;
+
   const rows = items.slice(0, 30).map((item, index) => {
     return [
       `${index + 1}`,
-      cleanTeamsTableValue(item.NoSerie || item.Serial || item.SN || item.numeroSerie || item.NumeroSerie, 25),
-      cleanTeamsTableValue(item.IMEI || item.imei, 18),
-      cleanTeamsTableValue(item.MARQUE || item.Marque || item.brand, 18),
-      cleanTeamsTableValue(item.MODEL || item.Modele || item.model, 28),
-      cleanTeamsTableValue(item.StatusParc || item.Statut || item.status, 28),
-      cleanTeamsTableValue(item.Matricule || item.matricule, 22)
+      cleanTeamsTableValue(item.IMEI, 18),
+      cleanTeamsTableValue(item.SN || item.NoSerie || item.Serial, 18),
+      cleanTeamsTableValue(item.MARQUE, 14),
+      cleanTeamsTableValue(item.MODEL, 26),
+      cleanTeamsTableValue(item.CAPACITE, 12),
+      cleanTeamsTableValue(item.EtatStock, 18),
+      cleanTeamsTableValue(item.Référence || item.Reference, 18)
     ];
   });
+
+  const byModel = {};
+  const byBrand = {};
+
+  for (const item of items) {
+    const brand = cleanMaterielValue(item.MARQUE);
+    const model = cleanMaterielValue(item.MODEL);
+
+    byBrand[brand] = (byBrand[brand] || 0) + 1;
+    byModel[model] = (byModel[model] || 0) + 1;
+  }
+
+  const brandSummary = Object.entries(byBrand)
+    .sort((a, b) => b[1] - a[1])
+    .map(([brand, count]) => `- ${brand} : ${count}`)
+    .join('\n');
+
+  const modelSummary = Object.entries(byModel)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([model, count]) => `- ${model} : ${count}`)
+    .join('\n');
 
   return [
     `📦 Inventaire par emplacement`,
     ``,
-    `📍 Emplacement : ${emplacement}`,
-    `Matériels trouvés : ${items.length}`,
+    `📍 Emplacement : ${emplacementApi}`,
+    `Résultat : ${description}`,
+    `Statut : ${status}`,
+    `Nombre de matériels trouvés : ${total}`,
     ``,
-    `| # | SN | IMEI | Marque | Modèle | Statut | Matricule |`,
-    `|---|---|---|---|---|---|---|`,
+
+    `📊 Résumé par marque`,
+    brandSummary || '- Non disponible',
+    ``,
+
+    `📱 Résumé par modèle`,
+    modelSummary || '- Non disponible',
+    ``,
+
+    `📋 Liste des matériels`,
+    ``,
+    `| # | IMEI | SN | Marque | Modèle | Capacité | État | Référence |`,
+    `|---|---|---|---|---|---|---|---|`,
     ...rows.map(row => {
-      return `| ${row[0]} | ${row[1]} | ${row[2]} | ${row[3]} | ${row[4]} | ${row[5]} | ${row[6]} |`;
+      return `| ${row[0]} | ${row[1]} | ${row[2]} | ${row[3]} | ${row[4]} | ${row[5]} | ${row[6]} | ${row[7]} |`;
     }),
     ``,
-    items.length > 30
-      ? `Liste limitée aux 30 premiers matériels.`
-      : `Inventaire complet affiché.`
+
+    total > 30
+      ? `Affichage limité aux 30 premiers matériels sur ${total}.`
+      : `Inventaire complet affiché.`,
+
+    ``,
+    `🧾 Conclusion support`,
+    `- ${total} matériel(s) trouvé(s) dans l’emplacement ${emplacementApi}.`
   ].join('\n').slice(0, 12000);
 }
 
