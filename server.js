@@ -1383,6 +1383,88 @@ const suiviSection = [
   ].join('\n').slice(0, 12000);
 }
 
+function ensureExportsDir() {
+  fs.mkdirSync(EXPORTS_DIR, { recursive: true });
+}
+
+function csvEscape(value) {
+  const text = cleanMaterielValue(value);
+
+  if (text === 'Non disponible') {
+    return '';
+  }
+
+  return `"${String(text).replace(/"/g, '""')}"`;
+}
+
+function buildInventoryCsv(emplacement, items) {
+  const headers = [
+    'Emplacement',
+    'IMEI',
+    'SN',
+    'Marque',
+    'Modele',
+    'EtatStock',
+    'Reference',
+    'Localisation',
+    'GenCode',
+    'Capacite',
+    'NomClient'
+  ];
+
+  const rows = items.map(item => {
+    return [
+      emplacement,
+      item.IMEI,
+      item.SN || item.NoSerie || item.Serial,
+      item.MARQUE,
+      item.MODEL,
+      item.EtatStock,
+      item.Référence || item.Reference,
+      item.localisation,
+      item.GenCode,
+      item.CAPACITE,
+      item.NomClient
+    ].map(csvEscape).join(';');
+  });
+
+  return [
+    headers.map(csvEscape).join(';'),
+    ...rows
+  ].join('\r\n');
+}
+
+function createInventoryCsvExport(emplacement, items) {
+  ensureExportsDir();
+
+  const safeEmplacement = String(emplacement || 'emplacement')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 60);
+
+  const exportId = `${safeEmplacement}-${Date.now()}`;
+  const filename = `inventaire-${exportId}.csv`;
+  const filePath = path.join(EXPORTS_DIR, filename);
+
+  const csv = buildInventoryCsv(emplacement, items);
+
+  // UTF-8 BOM helps Excel open accents correctly.
+  fs.writeFileSync(filePath, `\uFEFF${csv}`, 'utf8');
+
+  return {
+    filename,
+    filePath,
+    downloadUrl: `/exports/${encodeURIComponent(filename)}`
+  };
+}
+
+function getPublicBaseUrl() {
+  return String(
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `http://127.0.0.1:${PORT}`
+  ).replace(/\/+$/, '');
+}
+
 function formatInventaireEmplacementForTeams(emplacement, data) {
   const payload = data?.data || data?.result || data;
   const items = Array.isArray(payload?.lstSuivi)
@@ -1396,15 +1478,18 @@ function formatInventaireEmplacementForTeams(emplacement, data) {
   const description = cleanMaterielValue(payload?.description);
 
   if (!items.length) {
-    return [
-      `📦 Inventaire par emplacement`,
-      ``,
-      `📍 Emplacement : ${emplacementApi}`,
-      `Résultat : ${description}`,
-      `Statut : ${status}`,
-      ``,
-      `Aucun matériel trouvé pour cet emplacement.`
-    ].join('\n');
+    return {
+      text: [
+        `📦 Inventaire par emplacement`,
+        ``,
+        `📍 Emplacement : ${emplacementApi}`,
+        `Résultat : ${description}`,
+        `Statut : ${status}`,
+        ``,
+        `Aucun matériel trouvé pour cet emplacement.`
+      ].join('\n'),
+      csvUrl: null
+    };
   }
 
   const total = items.length;
@@ -1444,7 +1529,10 @@ function formatInventaireEmplacementForTeams(emplacement, data) {
     .map(([model, count]) => `- ${model} : ${count}`)
     .join('\n');
 
-  return [
+  const exportInfo = createInventoryCsvExport(emplacementApi, items);
+  const csvFullUrl = `${getPublicBaseUrl()}${exportInfo.downloadUrl}`;
+
+  const text = [
     `📦 Inventaire par emplacement`,
     ``,
     `📍 Emplacement : ${emplacementApi}`,
@@ -1471,13 +1559,20 @@ function formatInventaireEmplacementForTeams(emplacement, data) {
     ``,
 
     total > 30
-      ? `Affichage limité aux 30 premiers matériels sur ${total}.`
+      ? `Affichage limité aux 30 premiers matériels sur ${total}. Le fichier CSV contient la liste complète.`
       : `Inventaire complet affiché.`,
 
+    ``,
+    `⬇️ Télécharger le CSV : ${csvFullUrl}`,
     ``,
     `🧾 Conclusion support`,
     `- ${total} matériel(s) trouvé(s) dans l’emplacement ${emplacementApi}.`
   ].join('\n').slice(0, 12000);
+
+  return {
+    text,
+    csvUrl: csvFullUrl
+  };
 }
 
 function appendTechnicienPromptOnce(replyText) {
@@ -1658,13 +1753,14 @@ if (pendingMateriel) {
     try {
       await context.sendActivity(`Recherche de l’inventaire pour l’emplacement : ${emplacement}...`);
 
-      const inventaireData = await getInventaireByEmplacement(emplacement);
-      const replyText = formatInventaireEmplacementForTeams(emplacement, inventaireData);
+const inventaireData = await getInventaireByEmplacement(emplacement);
+const inventoryReply = formatInventaireEmplacementForTeams(emplacement, inventaireData);
+const replyText = inventoryReply.text;
 
-      pendingMaterielLookup.delete(teamsConversationKey);
-      saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+pendingMaterielLookup.delete(teamsConversationKey);
+saveTeamsConversationTurn(teamsConversationKey, text, replyText);
 
-      await context.sendActivity(replyText);
+await context.sendActivity(replyText);
     } catch (error) {
       console.error('Inventaire emplacement API lookup failed:', error);
 
@@ -2129,6 +2225,7 @@ const db = new DatabaseClass();
 
 const PUBLIC_DIR = './public';
 const DATA_DIR = path.join(__dirname, 'data');
+const EXPORTS_DIR = path.join(DATA_DIR, 'exports');
 const GUEST_SESSIONS_FILE = path.join(DATA_DIR, 'guest_sessions.json');
 const REQUESTS_FILE = path.join(DATA_DIR, 'requests.json');
 const KB_DIR = path.join(DATA_DIR, 'kb');
@@ -5666,6 +5763,22 @@ res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-AP
       res.end(content, 'utf-8');
     }
   });
+});
+
+app.get('/exports/:filename', (req, res) => {
+  const filename = String(req.params.filename || '');
+
+  if (!/^[a-zA-Z0-9_.-]+\.csv$/.test(filename)) {
+    return res.status(400).send('Nom de fichier invalide.');
+  }
+
+  const filePath = path.join(EXPORTS_DIR, filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('Fichier introuvable.');
+  }
+
+  res.download(filePath, filename);
 });
 
 server.listen(PORT, async () => {
