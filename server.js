@@ -1171,7 +1171,7 @@ async function getMaterielByImei(serialNumber) {
 async function getInventaireByEmplacement(emplacement) {
   const baseUrl =
     process.env.D4B_INVENTAIRE_EMPLACEMENT_API_URL ||
-    'https://d4brestapi.com/V1/ticket/getInventaireEmplacement';
+    'https://d4brestapi.com/V1/ticket/InvParEmplacement';
 
   const token = await getD4BApiToken();
 
@@ -1179,11 +1179,7 @@ async function getInventaireByEmplacement(emplacement) {
 
   url.searchParams.set('token', token);
   url.searchParams.set('mode', process.env.D4B_MATERIEL_MODE || 'prod');
-
-  const emplacementParam =
-    process.env.D4B_INVENTAIRE_EMPLACEMENT_PARAM || 'emplacement';
-
-  url.searchParams.set(emplacementParam, emplacement);
+  url.searchParams.set('Emplacement', emplacement);
 
   console.log('[Inventaire Emplacement API] Trying:', {
     url: url.toString().replace(token, '***TOKEN***'),
