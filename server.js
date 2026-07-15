@@ -989,7 +989,9 @@ function formatMaterielMenu() {
     ``,
     `1 - Historique matériel`,
     ``,
-    `2 - Inventaire par emplacement (liste des matériels)`
+    `2 - Inventaire par emplacement (liste des matériels)`,
+    ``,
+    `3 - Suivi Chronopost`
   ].join('\n');
 }
 
@@ -999,6 +1001,30 @@ function formatMaterielPrompt() {
 
 function formatInventaireEmplacementPrompt() {
   return `Tapez l’emplacement pour afficher la liste des matériels.`;
+}
+
+function formatSuiviChronopostPrompt() {
+  return `Tapez le numéro de colis.`;
+}
+
+function extractChronopostRefFromText(text) {
+  const raw = String(text || '').trim();
+
+  if (!raw) return null;
+
+  const normalized = normalizeTextForIntent(raw);
+
+  if (
+    normalized === '3' ||
+    normalized === 'suivi chronopost' ||
+    normalized === 'chronopost' ||
+    normalized === 'numero de colis' ||
+    normalized === 'numéro de colis'
+  ) {
+    return null;
+  }
+
+  return raw.toUpperCase();
 }
 
 function isMaterielMenuRequest(text) {
@@ -1215,6 +1241,128 @@ function cleanMaterielValue(value) {
   }
 
   return String(value).trim();
+}
+
+async function getSuiviChronopost(sRefEnvoi) {
+  const baseUrl =
+    process.env.D4B_SUIVI_CHRONOPOST_API_URL ||
+    'https://d4brestapi.com/V1/ticket/SuiviChronopost';
+
+  const token = await getD4BApiToken();
+
+  const url = new URL(baseUrl);
+
+  url.searchParams.set('token', token);
+  url.searchParams.set('mode', process.env.D4B_MATERIEL_MODE || 'prod');
+  url.searchParams.set('sRefEnvoi', sRefEnvoi);
+
+  console.log('[Suivi Chronopost API] Trying:', {
+    url: url.toString().replace(token, '***TOKEN***'),
+    hasToken: !!token,
+    sRefEnvoi
+  });
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json, text/plain, */*'
+    }
+  });
+
+  const bodyText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`API suivi Chronopost ${response.status}: ${bodyText.slice(0, 500)}`);
+  }
+
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return { raw: bodyText };
+  }
+}
+
+function formatSuiviChronopostForTeams(sRefEnvoi, data) {
+  const payload = data?.data || data?.result || data;
+
+  const rawResult = String(payload?.sResultat || payload?.SResultat || '').trim();
+  const status = cleanMaterielValue(payload?.statutsRep);
+  const description = cleanMaterielValue(payload?.description);
+
+  if (!rawResult) {
+    return [
+      `🚚 Suivi Chronopost`,
+      ``,
+      `🔎 Référence d’envoi : ${sRefEnvoi}`,
+      `Résultat : ${description}`,
+      `Statut : ${status}`,
+      ``,
+      `Aucun suivi trouvé pour cette référence.`
+    ].join('\n');
+  }
+
+  const lines = rawResult
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const eventRows = [];
+  let receiverName = null;
+
+  for (const line of lines) {
+    const receiverMatch = line.match(/nom du réceptionnaire\s*:\s*(.+)$/i);
+
+    if (receiverMatch) {
+      receiverName = receiverMatch[1].trim();
+      continue;
+    }
+
+    const eventMatch = line.match(/^(.+?)\s*-\s*(.+)$/);
+
+    if (eventMatch) {
+      eventRows.push([
+        cleanTeamsTableValue(eventMatch[1], 22),
+        cleanTeamsTableValue(eventMatch[2], 80)
+      ]);
+    } else {
+      eventRows.push([
+        'Non disponible',
+        cleanTeamsTableValue(line, 80)
+      ]);
+    }
+  }
+
+  const lastEvent = eventRows.length ? eventRows[eventRows.length - 1][1] : 'Non disponible';
+
+  return [
+    `🚚 Suivi Chronopost`,
+    ``,
+    `🔎 Référence d’envoi : ${sRefEnvoi}`,
+    `Résultat : ${description}`,
+    `Statut : ${status}`,
+    ``,
+
+    `📋 Historique du colis`,
+    ``,
+    `| Date / heure | Événement |`,
+    `|---|---|`,
+    ...eventRows.map(row => `| ${row[0]} | ${row[1]} |`),
+    ``,
+
+    `📦 Dernier statut`,
+    `- ${lastEvent}`,
+    ``,
+
+    receiverName
+      ? `👤 Réceptionnaire\n- ${cleanTeamsTableValue(receiverName, 60)}`
+      : `👤 Réceptionnaire\n- Non disponible`,
+
+    ``,
+    `🧾 Conclusion support`,
+    receiverName
+      ? `- Livraison effectuée. Réceptionnaire : ${receiverName}.`
+      : `- Suivi Chronopost récupéré avec succès.`
+  ].join('\n').slice(0, 12000);
 }
 
 function cleanTeamsTableValue(value, max = 120) {
@@ -1855,6 +2003,41 @@ await context.sendActivity(replyText);
     await next();
     return;
   }
+  if (pendingMateriel.type === 'chronopost') {
+  const referenceColis = extractChronopostRefFromText(text);
+
+  if (!referenceColis) {
+    await context.sendActivity(
+      `${formatSuiviChronopostPrompt()}\n\nExemple : XU123456789FR`
+    );
+    await next();
+    return;
+  }
+
+  try {
+    await context.sendActivity(`Recherche du suivi Chronopost pour : ${referenceColis}...`);
+
+    const suiviData = await getSuiviChronopost(referenceColis);
+    const replyText = formatSuiviChronopostForTeams(referenceColis, suiviData);
+
+    pendingMaterielLookup.delete(teamsConversationKey);
+    saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+
+    await context.sendActivity(replyText);
+  } catch (error) {
+    console.error('Suivi Chronopost API lookup failed:', error);
+
+    pendingMaterielLookup.delete(teamsConversationKey);
+
+    await context.sendActivity(
+      `Impossible de récupérer le suivi Chronopost pour ${referenceColis}.\n\n` +
+      `Erreur technique : ${error.message || error}`
+    );
+  }
+
+  await next();
+  return;
+}
 }
 
 const normalizedMaterielChoice = normalizeTextForIntent(text);
@@ -1892,7 +2075,22 @@ if (normalizedMaterielChoice === '2') {
   await next();
   return;
 }
+if (normalizedMaterielChoice === '3') {
+  pendingMaterielLookup.set(teamsConversationKey, {
+    type: 'chronopost',
+    requestedAt: new Date().toISOString(),
+    requestedByName: userName,
+    requestedByEmail: userEmail
+  });
 
+  const replyText = formatSuiviChronopostPrompt();
+
+  saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+  await context.sendActivity(replyText);
+
+  await next();
+  return;
+}
 if (isMaterielMenuRequest(text)) {
   const replyText = formatMaterielMenu();
 
@@ -1956,13 +2154,15 @@ if (isGreetingOnly(text)) {
 
   `🎫 Pour créer un ticket, écrivez « ticket ».`,
 
-  [
-    `📦 Pour accéder au module matériel, écrivez « matériel ».`,
-    ``,
-    `1 - Historique matériel`,
-    ``,
-    `2 - Inventaire par emplacement (liste des matériels)`
-  ].join('\n')
+[
+  `📦 Pour accéder au module matériel, écrivez « matériel ».`,
+  ``,
+  `1 - Historique matériel`,
+  ``,
+  `2 - Inventaire par emplacement (liste des matériels)`,
+  ``,
+  `3 - Suivi Chronopost`
+].join('\n')
 ];
 
   const welcomeText = welcomeParts.join('\n\n');
