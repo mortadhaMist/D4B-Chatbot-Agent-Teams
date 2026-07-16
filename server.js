@@ -1,13 +1,15 @@
-﻿const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const { URL } = require('url');
-const dotenv = require('dotenv');
-const crypto = require('crypto');
-dotenv.config();
+﻿// --- IMPORTS ET MODULES ---
+const http = require('http'); // Module HTTP pour créer le serveur
+const fs = require('fs'); // Module pour lire/écrire des fichiers
+const path = require('path'); // Module pour gérer les chemins de fichiers
+const { URL } = require('url'); // Module pour traiter les URLs
+const dotenv = require('dotenv'); // Module pour charger les variables d'environnement
+const crypto = require('crypto'); // Module cryptographique pour la sécurité
+dotenv.config(); // Charge les variables d'environnement depuis le fichier .env
 
-const PORT = process.env.PORT || 8080;
-const ALLOW_INTERNET_FALLBACK = String(process.env.ALLOW_INTERNET_FALLBACK || 'false').toLowerCase() === 'true';
+// --- CONFIGURATION SERVEUR ---
+const PORT = process.env.PORT || 8080; // Port sur lequel le serveur écoute
+const ALLOW_INTERNET_FALLBACK = String(process.env.ALLOW_INTERNET_FALLBACK || 'false').toLowerCase() === 'true'; // Autorise la recherche Internet si pas de données SharePoint
 const SYSTEM_PROMPT = `Vous êtes un assistant support IT Digital4Business pour les équipes D4B.
 Répondez uniquement en français.
 Vous supportez la classification des incidents IT, l'orientation des lots de service, la priorisation des tickets et le dépannage des problèmes informatiques des équipes D4B.
@@ -16,24 +18,28 @@ Ne répondez pas aux questions non liées au support IT, aux commandes, aux prom
 Si l'utilisateur demande quelque chose en dehors du support IT, expliquez poliment que vous ne gérez que les incidents IT D4B et demandez une description du problème technique.
 Utilisez les extraits de la base de connaissances lorsque disponibles.
 `;
-const teamsConversationHistory = new Map();
-const MAX_TEAMS_HISTORY_TURNS = 20;
+// --- MÉMOIRE ET CACHE TEAMS ---
+const teamsConversationHistory = new Map(); // Stocke l'historique des conversations Teams
+const MAX_TEAMS_HISTORY_TURNS = 20; // Limite du nombre de tours de conversation à garder en mémoire
 
-const diagnosticJobs = [];
-const pendingDiagnostics = new Map();
-const pendingMaterielLookup = new Map();
+// --- GESTION DES DIAGNOSTICS ET AGENTS ---
+const diagnosticJobs = []; // Liste de tous les jobs de diagnostic en cours et complétés
+const pendingDiagnostics = new Map(); // Diagnostics en attente de confirmation par l'utilisateur Teams
+const pendingMaterielLookup = new Map(); // Recherches matériel/inventaire en attente
 let d4bApiTokenCache = {
-  token: null,
-  expiresAt: 0
+  token: null, // Token JWT pour l'API D4B
+  expiresAt: 0 // Timestamp d'expiration du token
 };
-const registeredAgents = new Map();
-const lastDiagnosticDeviceByConversation = new Map();
+const registeredAgents = new Map(); // Dictionnaire des appareils (agents) connectés au serveur
+const lastDiagnosticDeviceByConversation = new Map(); // Dernière appareil utilisé pour diagnostic par conversation
 
-const pendingAdminAuth = new Map();
-const adminUnlockedUntil = new Map();
+// --- GESTION DES AUTHENTIFICATIONS ADMIN ---
+const pendingAdminAuth = new Map(); // Demandes d'authentification admin en attente
+const adminUnlockedUntil = new Map(); // Trace du moment jusqu'auquel admin est déverrouillé par conversation
 
-const ADMIN_UNLOCK_TTL_MS = 10 * 60 * 1000;
+const ADMIN_UNLOCK_TTL_MS = 10 * 60 * 1000; // Durée de vie du verrou admin (10 minutes en ms)
 
+// --- ACTIONS PROTÉGÉES PAR AUTHENTIFICATION ADMIN ---
 const ADMIN_PROTECTED_TYPES = new Set([
   // Existing protected actions
   'flush_dns',
@@ -68,10 +74,21 @@ const ADMIN_PROTECTED_TYPES = new Set([
   'restart_computer'
 ]);
 
+/**
+ * Normalise un ID d'appareil en majuscules et supprime les espaces
+ * @param {string} deviceId - L'identifiant brut de l'appareil
+ * @returns {string} - L'ID normalisé (vide si null)
+ */
 function normalizeDeviceId(deviceId) {
   return String(deviceId || '').trim().toUpperCase();
 }
 
+/**
+ * Enregistre ou met à jour un appareil connecté avec ses informations actuelles
+ * @param {string} deviceId - L'ID de l'appareil
+ * @param {object} extra - Propriétés supplémentaires (username, ip, hostname, etc.)
+ * @returns {object|null} - L'objet appareil mis à jour ou null si ID vide
+ */
 function touchAgentDevice(deviceId, extra = {}) {
   const id = normalizeDeviceId(deviceId);
   if (!id) return null;
@@ -90,6 +107,11 @@ function touchAgentDevice(deviceId, extra = {}) {
   return device;
 }
 
+/**
+ * Récupère la liste des appareils en ligne (vus récemment)
+ * @param {number} maxAgeMs - Âge maximum en millisecondes pour considérer un appareil en ligne (90 secondes par défaut)
+ * @returns {Array} - Liste des appareils actuellement en ligne
+ */
 function getOnlineDevices(maxAgeMs = 90000) {
   const now = Date.now();
 
@@ -99,6 +121,10 @@ function getOnlineDevices(maxAgeMs = 90000) {
   });
 }
 
+/**
+ * Formate une liste des appareils connectés pour affichage Teams
+ * @returns {string} - Chaîne formatée avec liste des appareils ou message 'aucun'
+ */
 function formatOnlineDevicesList() {
   const devices = getOnlineDevices();
 
@@ -117,6 +143,11 @@ function formatOnlineDevicesList() {
     .join('\n');
 }
 
+/**
+ * Extrait l'ID d'un appareil à partir d'un texte utilisateur (ex: "sur PC-12345")
+ * @param {string} text - Le texte brut contenant potentiellement un ID d'appareil
+ * @returns {string|null} - L'ID d'appareil normalisé ou null
+ */
 function extractDeviceIdFromText(text) {
   const raw = String(text || '').trim();
 
@@ -136,6 +167,11 @@ function extractDeviceIdFromText(text) {
 
   return null;
 }
+/**
+ * Cherche un appareil par ID, nom d'hôte ou adresse IP
+ * @param {string} value - La valeur à chercher (peut être ID, hostname ou IP)
+ * @returns {object|null} - L'objet appareil trouvé ou null
+ */
 function findDeviceByIdOrIp(value) {
   const target = String(value || '').trim().toUpperCase();
 
@@ -161,6 +197,12 @@ function findDeviceByIdOrIp(value) {
 
   return null;
 }
+/**
+ * Analyse le texte utilisateur pour déterminer le type de diagnostic demandé
+ * Reconnaît les patterns de langage naturel en français
+ * @param {string} text - Le texte de l'utilisateur
+ * @returns {object|null} - Objet avec type et label du diagnostic, ou null
+ */
 function getDiagnosticRequest(text) {
   const normalized = normalizeTextForIntent(text);
 if (
@@ -712,11 +754,21 @@ if (
   return null;
 }
 
+/**
+ * Vérifie si le texte est une confirmation positive (oui, ok, confirme, etc.)
+ * @param {string} text - Le texte de l'utilisateur
+ * @returns {boolean} - True si c'est une confirmation positive
+ */
 function isYesConfirmation(text) {
   const normalized = normalizeTextForIntent(text);
   return /^(oui|yes|ok|confirme|je confirme|lance|lancer)$/i.test(normalized);
 }
 
+/**
+ * Vérifie si le diagnostic est de haut risque (nécessite confirmation forte)
+ * @param {string} type - Le type de diagnostic
+ * @returns {boolean} - True si c'est une action à haut risque
+ */
 function isHighRiskDiagnostic(type) {
   return new Set([
     'restart_computer',
@@ -730,19 +782,40 @@ function isStrongAdminConfirmation(text) {
   return normalizeTextForIntent(text) === 'confirmer action admin';
 }
 
+/**
+ * Détermine si un diagnostic est protégé par authentification admin
+ * @param {string} type - Le type de diagnostic
+ * @returns {boolean} - True si authentification admin requise
+ */
 function isAdminProtectedDiagnostic(type) {
   return ADMIN_PROTECTED_TYPES.has(String(type || ''));
 }
 
+/**
+ * Vérifie si admin est déverrouillé pour cette conversation
+ * @param {string} teamsConversationKey - La clé de conversation
+ * @returns {boolean} - True si admin est déverrouillé et pas expiré
+ */
 function isAdminUnlocked(teamsConversationKey) {
   const expiresAt = adminUnlockedUntil.get(teamsConversationKey);
   return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
 
+/**
+ * Déverrouille l'accès admin pour cette conversation pendant 10 minutes
+ * @param {string} teamsConversationKey - La clé de conversation
+ */
 function unlockAdminForConversation(teamsConversationKey) {
   adminUnlockedUntil.set(teamsConversationKey, Date.now() + ADMIN_UNLOCK_TTL_MS);
 }
 
+/**
+ * Valide une chaîne en comparaison sécurisée (timing-safe)
+ * Évite les attaques par timing
+ * @param {string} a - Première chaîne
+ * @param {string} b - Deuxième chaîne
+ * @returns {boolean} - True si les chaînes correspondent
+ */
 function secureCompareStrings(a, b) {
   const left = Buffer.from(String(a || ''), 'utf8');
   const right = Buffer.from(String(b || ''), 'utf8');
@@ -754,6 +827,11 @@ function secureCompareStrings(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
+/**
+ * Vérifie si le mot de passe admin fourni est correct (de manière sécurisée)
+ * @param {string} text - Le mot de passe fourni par l'utilisateur
+ * @returns {boolean} - True si le mot de passe correspond
+ */
 function isValidSupportAdminPassword(text) {
   const expected = process.env.SUPPORT_ADMIN_PASSWORD;
 
@@ -765,6 +843,14 @@ function isValidSupportAdminPassword(text) {
   return secureCompareStrings(String(text || '').trim(), expected);
 }
 
+/**
+ * Crée un job de diagnostic avec tous les métadonnées nécessaires
+ * @param {string} deviceId - L'ID de l'appareil cible
+ * @param {string} type - Le type de diagnostic à exécuter
+ * @param {string} requestedBy - L'email ou nom de qui a demandé le diagnostic
+ * @param {object|null} conversationReference - Référence de conversation Teams pour répondre
+ * @returns {object} - Le job de diagnostic créé
+ */
 function createDiagnosticJob(deviceId, type, requestedBy, conversationReference = null) {
   const job = {
     id: `JOB-${Date.now()}`,
@@ -784,6 +870,11 @@ function createDiagnosticJob(deviceId, type, requestedBy, conversationReference 
   return job;
 }
 
+/**
+ * Normalise un texte pour analyse d'intention (minuscules, pas d'accents, trim)
+ * @param {string} text - Le texte à normaliser
+ * @returns {string} - Le texte normalisé
+ */
 function normalizeTextForIntent(text) {
   return String(text || '')
     .toLowerCase()
@@ -792,20 +883,41 @@ function normalizeTextForIntent(text) {
     .trim();
 }
 
+/**
+ * Détermine si le texte est une simple salutation (bonjour, salut, hi, etc.)
+ * @param {string} text - Le texte de l'utilisateur
+ * @returns {boolean} - True si c'est uniquement une salutation
+ */
 function isGreetingOnly(text) {
   const normalized = normalizeTextForIntent(text);
   return /^(bonjour|bonsoir|salut|hello|hi|coucou|bjr)[\s!.?]*$/i.test(normalized);
 }
 
+/**
+ * Détermine si l'utilisateur demande la création d'un ticket
+ * @param {string} text - Le texte de l'utilisateur
+ * @returns {boolean} - True si c'est une demande de ticket
+ */
 function isCreateTicketRequest(text) {
   const normalized = normalizeTextForIntent(text);
   return /^(technicien|ticket|creer ticket|cree ticket|ouvrir ticket|ouvrir un ticket)$/i.test(normalized);
 }
 
+/**
+ * Récupère l'historique de conversation Teams pour une clé de conversation
+ * @param {string} key - La clé de conversation unique
+ * @returns {Array} - Liste des échanges user/assistant
+ */
 function getTeamsConversationHistory(key) {
   return teamsConversationHistory.get(key) || [];
 }
 
+/**
+ * Enregistre un échange dans l'historique de conversation Teams
+ * @param {string} key - La clé de conversation unique
+ * @param {string} userText - Le message de l'utilisateur
+ * @param {string} botText - La réponse du bot
+ */
 function saveTeamsConversationTurn(key, userText, botText) {
   const history = getTeamsConversationHistory(key);
   history.push({
@@ -816,6 +928,11 @@ function saveTeamsConversationTurn(key, userText, botText) {
   teamsConversationHistory.set(key, history.slice(-MAX_TEAMS_HISTORY_TURNS));
 }
 
+/**
+ * Récupère l'email de l'utilisateur Teams depuis le contexte d'activité
+ * @param {object} context - Le contexte de l'activité Teams
+ * @returns {string|null} - L'email de l'utilisateur ou null
+ */
 function getTeamsUserEmail(context) {
   const activity = context?.activity || {};
   const channelData = activity.channelData || {};
@@ -831,6 +948,12 @@ function getTeamsUserEmail(context) {
   );
 }
 
+/**
+ * Classifie un ticket Teams par priorité, catégorie et lot de service
+ * Analyse le texte du ticket pour déterminer la classification automatique
+ * @param {string} text - Le contenu du ticket
+ * @returns {object} - Objet avec priority, category et serviceLot
+ */
 function classifyTeamsTicket(text) {
   const normalized = normalizeTextForIntent(text);
 
@@ -885,6 +1008,14 @@ function classifyTeamsTicket(text) {
   return { priority, category, serviceLot };
 }
 
+/**
+ * Construit la description d'un ticket à partir de l'historique de conversation
+ * @param {Array} history - L'historique des échanges
+ * @param {string} triggerText - Le texte qui a déclenché la création du ticket
+ * @param {string} userName - Le nom d'utilisateur Teams
+ * @param {string} userEmail - L'email d'utilisateur Teams
+ * @returns {string} - Description formatée du ticket
+ */
 function buildTeamsTicketDescription(history, triggerText, userName, userEmail) {
   const conversationLines = history.map((turn, index) => {
     return [
@@ -906,6 +1037,11 @@ function buildTeamsTicketDescription(history, triggerText, userName, userEmail) 
   ].join('\n');
 }
 
+/**
+ * Extrait l'ID du ticket depuis la réponse de l'API Atera (plusieurs formats possibles)
+ * @param {object} data - La réponse d'Atera
+ * @returns {string|null} - L'ID du ticket ou null
+ */
 function getAteraTicketId(data) {
   return data?.TicketID ||
     data?.TicketId ||
@@ -917,6 +1053,11 @@ function getAteraTicketId(data) {
     null;
 }
 
+/**
+ * Détermine si le texte demande l'historique d'un matiériel par IMEI
+ * @param {string} text - Le texte de l'utilisateur
+ * @returns {boolean} - True si c'est une demande d'historique matériel
+ */
 function isMaterielHistoryRequest(text) {
   const normalized = normalizeTextForIntent(text);
 
@@ -941,6 +1082,12 @@ function isMaterielHistoryRequest(text) {
   );
 }
 
+/**
+ * Extrait le numéro IMEI ou de série d'un texte de l'utilisateur
+ * Reconnaît 15-17 chiffres consécutifs ou valeurs étiquetées
+ * @param {string} text - Le texte brut
+ * @returns {string|null} - L'IMEI/série normalisé ou null
+ */
 function extractImeiFromText(text) {
   const raw = String(text || '').trim();
 
@@ -980,7 +1127,65 @@ function extractImeiFromText(text) {
   return null;
 }
 
+function createMaterielMenuCard() {
+  return {
+    type: 'AdaptiveCard',
+    version: '1.4',
+    body: [
+      {
+        type: 'TextBlock',
+        text: 'Module matériel',
+        weight: 'Bolder',
+        size: 'Medium',
+        wrap: true
+      },
+      {
+        type: 'TextBlock',
+        text: 'Choisissez une option :',
+        wrap: true
+      }
+    ],
+    actions: [
+      {
+        type: 'Action.Submit',
+        title: '1 - Historique matériel',
+        data: {
+          materielChoice: '1'
+        }
+      },
+      {
+        type: 'Action.Submit',
+        title: '2 - Inventaire par emplacement',
+        data: {
+          materielChoice: '2'
+        }
+      },
+      {
+        type: 'Action.Submit',
+        title: '3 - Suivi Chronopost',
+        data: {
+          materielChoice: '3'
+        }
+      }
+    ]
+  };
+}
 
+async function sendMaterielMenuCard(context) {
+  await context.sendActivity({
+    attachments: [
+      {
+        contentType: 'application/vnd.microsoft.card.adaptive',
+        content: createMaterielMenuCard()
+      }
+    ]
+  });
+}
+
+/**
+ * Formate le menu d'accès au module matériel pour Teams
+ * @returns {string} - Menu formaté avec les options disponibles
+ */
 function formatMaterielMenu() {
   return [
     `📦 Module matériel`,
@@ -1066,6 +1271,11 @@ function extractEmplacementFromText(text) {
   return raw.toUpperCase();
 }
 
+/**
+ * Extrait le token JWT depuis la réponse de l'API D4B (plusieurs formats possibles)
+ * @param {object} data - La réponse de l'API
+ * @returns {string|null} - Le token ou null
+ */
 function extractD4BToken(data) {
   return (
     data?.token ||
@@ -1082,6 +1292,11 @@ function extractD4BToken(data) {
   );
 }
 
+/**
+ * Calcule la durée de vie du token JWT en millisecondes
+ * @param {object} data - La réponse de l'API contenant expires_in
+ * @returns {number} - La durée en millisecondes
+ */
 function getD4BTokenTtlMs(data) {
   const expiresIn =
     data?.expires_in ||
@@ -1100,6 +1315,11 @@ function getD4BTokenTtlMs(data) {
   return 25 * 60 * 1000;
 }
 
+/**
+ * Récupère un token d'authentification de l'API D4B (avec cache)
+ * Appelle l'API d'authentification D4B et met en cache le résultat
+ * @returns {Promise<string>} - Le token JWT valide
+ */
 async function getD4BApiToken() {
   if (
     d4bApiTokenCache.token &&
@@ -1167,7 +1387,7 @@ async function getMaterielByImei(serialNumber) {
   // Use "test" if you want test mode, "prod" if you want production.
   url.searchParams.set('mode', process.env.D4B_MATERIEL_MODE || 'prod');
 
-  // IMPORTANT: API expects SN, not IMEI.
+  // IMPORTANT: API expects SN.
   url.searchParams.set('SN', serialNumber);
 
   console.log('[Materiel API] Trying:', {
@@ -1527,6 +1747,11 @@ function ensureExportsDir() {
   fs.mkdirSync(EXPORTS_DIR, { recursive: true });
 }
 
+/**
+ * Echappe une valeur pour l'export CSV
+ * @param {*} value - La valeur à formater
+ * @returns {string} - La valeur formatée pour CSV
+ */
 function csvEscape(value) {
   const text = cleanMaterielValue(value);
 
@@ -1985,7 +2210,13 @@ await context.sendActivity(`Erreur interne du bot : ${error?.message || String(e
       }
 
 const rawText = (context.activity && context.activity.text) ? context.activity.text : '';
-const text = String(rawText || '').trim();
+const submitValue = context.activity?.value || {};
+
+const text = String(
+  rawText ||
+  submitValue.materielChoice ||
+  ''
+).trim();
 const userName = context.activity.from?.name || 'TeamsUser';
 let userEmail = getTeamsUserEmail(context);
 
@@ -2179,7 +2410,7 @@ if (isMaterielMenuRequest(text)) {
   const replyText = formatMaterielMenu();
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await context.sendActivity(replyText);
+  await sendMaterielMenuCard(context);
 
   await next();
   return;
@@ -2224,9 +2455,27 @@ if (isMaterielHistoryRequest(text)) {
   await next();
   return;
 }
-
-// Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
+  const welcomeText = [
+    `👋 Bonjour !`,
+    ``,
+    `Je suis l'assistant interne de D4B : je vous donne accès à nos outils internes directement depuis Teams, en libre-service.`,
+    ``,
+    `Nos équipes Dev me font évoluer en continu. À utiliser dès maintenant, le module Matériel : choisissez une option ci-dessous ou tapez « matériel ».`,
+    ``,
+    `👉 D'autres fonctionnalités arriveront prochainement.`
+  ].join('\n');
+
+  saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
+
+  await context.sendActivity(welcomeText);
+  await sendMaterielMenuCard(context);
+
+  await next();
+  return;
+}
+// Message d'accueil quand l'utilisateur dit juste bonjour
+/*if (isGreetingOnly(text)) {
   const welcomeParts = [
     `👋 Bonjour !`,
     
@@ -2252,7 +2501,7 @@ if (isGreetingOnly(text)) {
 
   await next();
   return;
-}
+}*/
 
 const pendingAdminRequest = pendingAdminAuth.get(teamsConversationKey);
 
@@ -2589,6 +2838,10 @@ const KB_DIR = path.join(DATA_DIR, 'kb');
 
 //Récupérer un token Graph côté backend
 const axios = require("axios");
+/**
+ * Récupère un token d'authentification pour l'API Microsoft Graph
+ * @returns {Promise<string>} - Le token d'accès Bearer
+ */
 async function getGraphToken() {
 const url = `https://login.microsoftonline.com/${process.env.TENANT_ID}/oauth2/v2.0/token`;
 const params = new URLSearchParams();
@@ -2626,6 +2879,11 @@ function commandResult(result, commandStartsWith) {
   );
 }
 
+/**
+ * Teste si ping a réussi (0% perte)
+ * @param {string} stdout - La sortie de la commande ping
+ * @returns {boolean} - True si le ping a réussi
+ */
 function isPingOk(stdout) {
   const text = normalizeTextForIntent(stdout);
 
@@ -2637,6 +2895,11 @@ function isPingOk(stdout) {
   );
 }
 
+/**
+ * Teste si nslookup a trouvé une adresse
+ * @param {string} stdout - La sortie de la commande nslookup
+ * @returns {boolean} - True si la résolution a réussi
+ */
 function isNslookupOk(stdout) {
   const text = normalizeTextForIntent(stdout);
 
@@ -2655,12 +2918,24 @@ function cleanIpconfigValue(line) {
   return parts.length > 1 ? parts.slice(1).join(':').trim() : line.trim();
 }
 
+/**
+ * Trouve un résultat de commande par pattern
+ * @param {object} result - L'objet résultat du diagnostic
+ * @param {string} search - Le texte à chercher dans la commande
+ * @returns {object|undefined} - L'objet résultat trouvé ou undefined
+ */
 function findCommand(result, search) {
   return (result?.results || []).find(r =>
     String(r.command || '').toLowerCase().includes(String(search || '').toLowerCase())
   );
 }
 
+/**
+ * Nettoie le texte d'un diagnostic (limite la taille)
+ * @param {string} text - Le texte brut
+ * @param {number} max - La taille maximale en caractères
+ * @returns {string} - Le texte nettoyé et tronqué
+ */
 function cleanDiagnosticText(text, max = 1200) {
   const cleaned = String(text || '')
     .replace(/\r/g, '')
@@ -2672,6 +2947,12 @@ function cleanDiagnosticText(text, max = 1200) {
   return cleaned.length > max ? cleaned.slice(0, max) + '\n...' : cleaned;
 }
 
+/**
+ * Trouve la première ligne contenant l'un des mots-clés
+ * @param {string} text - Le texte à analyser
+ * @param {Array} keywords - Liste des mots-clés à chercher
+ * @returns {string|null} - La ligne trouvée ou null
+ */
 function firstMatchingLine(text, keywords) {
   const normalizedKeywords = keywords.map(k => normalizeTextForIntent(k));
   const lines = String(text || '').split(/\r?\n/);
@@ -2682,6 +2963,11 @@ function firstMatchingLine(text, keywords) {
   }) || null;
 }
 
+/**
+ * Vérifie si l'exécution d'une commande a réussi (pas d'erreur ou stderr)
+ * @param {object} item - L'objet de commande
+ * @returns {boolean} - True si succès
+ */
 function commandOk(item) {
   if (!item) return false;
   if (item.error) return false;
@@ -2689,6 +2975,11 @@ function commandOk(item) {
   return true;
 }
 
+/**
+ * Retourne un icône d'état pour une commande (🟢 OK, 🔴 Erreur, etc.)
+ * @param {object} item - L'objet de commande
+ * @returns {string} - L'icône d'état formaté avec label
+ */
 function commandStatusIcon(item) {
   if (!item) return '⚪ Non disponible';
   if (item.error) return '🔴 Erreur';
@@ -2696,11 +2987,22 @@ function commandStatusIcon(item) {
   return '🟢 OK';
 }
 
+/**
+ * Extrait la valeur après le caractère ':' d'une ligne
+ * @param {string} line - La ligne texte
+ * @returns {string} - La valeur ou 'Non détecté' par défaut
+ */
 function extractAfterColon(line) {
   if (!line) return 'Non détecté';
   const parts = String(line).split(':');
   return parts.length > 1 ? parts.slice(1).join(':').trim() : String(line).trim();
 }
+/**
+ * Extrait une valeur depuis la sortie netsh par label
+ * @param {string} text - La sortie netsh complète
+ * @param {string} label - Le label de la clé à chercher
+ * @returns {string} - La valeur ou 'Non détecté'
+ */
 function extractNetshValue(text, label) {
   const normalizedLabel = normalizeTextForIntent(label);
   const lines = String(text || '').split(/\r?\n/);
@@ -2715,6 +3017,11 @@ function extractNetshValue(text, label) {
   return parts.length > 1 ? parts.slice(1).join(':').trim() : line.trim();
 }
 
+/**
+ * Extrait les profils WiFi de la sortie netsh
+ * @param {string} text - La sortie netsh complète
+ * @returns {Array} - Liste des profils WiFi détectés
+ */
 function extractWifiProfiles(text) {
   const lines = String(text || '').split(/\r?\n/);
 
@@ -2727,6 +3034,11 @@ function extractWifiProfiles(text) {
     .filter(Boolean);
 }
 
+/**
+ * Extrait les lignes DNS de la sortie d'ipconfig
+ * @param {string} text - La sortie ipconfig complète
+ * @returns {Array} - Liste des lignes DNS trouvées
+ */
 function extractDnsLines(text) {
   const lines = String(text || '')
     .replace(/\r/g, '')
@@ -2757,6 +3069,14 @@ function removeRawCommandNoise(text) {
 
   return cleanDiagnosticText(value, 700);
 }
+/**
+ * Formate la résultat d'une action de réparation pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @param {string} title - Le titre à afficher
+ * @param {string} successMessage - Message si succés
+ * @param {string} warningMessage - Message d'avertissement si échec
+ * @returns {string} - Résultat formaté pour Teams
+ */
 function formatRepairActionResult(result, title, successMessage, warningMessage = null) {
   const outputs = result.results || [];
 
@@ -2813,6 +3133,12 @@ const errorText = item.error
   ].join('\n').slice(0, 7000);
 }
 
+/**
+ * Formate l'en-tête standard pour tous les résultats de diagnostic
+ * @param {object} result - Le résultat du diagnostic
+ * @param {string} title - Le titre du diagnostic
+ * @returns {string} - En-tête formaté avec infos poste
+ */
 function formatDiagnosticHeader(result, title) {
   return [
     `✅ ${title}`,
@@ -2825,6 +3151,11 @@ function formatDiagnosticHeader(result, title) {
   ].join('\n');
 }
 
+/**
+ * Formate le résultat d'un diagnostic réseau basique pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat formaté avec infos IP, ping, DNS
+ */
 function formatNetworkBasicResult(result) {
   const ipconfig = findCommand(result, 'ipconfig');
   const pingDns = findCommand(result, 'ping 8.8.8.8');
@@ -2882,6 +3213,11 @@ function formatNetworkBasicResult(result) {
   ].join('\n');
 }
 
+/**
+ * Formate le résultat d'un diagnostic réseau avancé pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec adresses IP, routes, cartes réseau
+ */
 function formatNetworkAdvancedResult(result) {
   const testNet = findCommand(result, 'Test-NetConnection');
   const ipAddress = findCommand(result, 'Get-NetIPAddress');
@@ -2918,6 +3254,11 @@ function formatNetworkAdvancedResult(result) {
       : '- La connectivité avancée n’est pas confirmée. Vérifier passerelle, câble/Wi-Fi, VLAN ou filtrage réseau.'
   ].join('\n').slice(0, 7000);
 }
+/**
+ * Formate le résultat d'un diagnostic WiFi pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec statut interface, profils, DNS
+ */
 function formatWifiDiagnosticsResult(result) {
   const interfaces = findCommand(result, 'netsh wlan show interfaces');
   const profiles = findCommand(result, 'netsh wlan show profiles');
@@ -2987,6 +3328,11 @@ function formatWifiDiagnosticsResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+/**
+ * Formate le résultat d'un diagnostic imprimante basique pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec imprimantes et statut du spouleur
+ */
 function formatPrinterBasicResult(result) {
   const printers = findCommand(result, 'Get-Printer');
   const spooler = findCommand(result, 'Get-Service Spooler');
@@ -3015,6 +3361,11 @@ function formatPrinterBasicResult(result) {
   ].join('\n').slice(0, 7000);
 }
 
+/**
+ * Formate le résultat d'un diagnostic système basique pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec hostname, user, OS et infos système
+ */
 function formatSystemBasicResult(result) {
   const hostname = findCommand(result, 'hostname');
   const whoami = findCommand(result, 'whoami');
@@ -3057,6 +3408,11 @@ function formatSystemBasicResult(result) {
   ].join('\n').slice(0, 7000);
 }
 
+/**
+ * Extrait les champs d'une sortie PowerShell formatée (clé: valeur)
+ * @param {string} text - La sortie PowerShell
+ * @returns {object} - Dictionnaire des champs extraits
+ */
 function extractPowershellFields(text) {
   const fields = {};
   const lines = String(text || '').replace(/\r/g, '').split('\n');
@@ -3071,6 +3427,12 @@ function extractPowershellFields(text) {
   return fields;
 }
 
+/**
+ * Parse les événements Windows depuis la sortie Get-WinEvent
+ * @param {string} text - La sortie PowerShell
+ * @param {number} maxEvents - Nombre max d'événements à retourner
+ * @returns {Array} - Liste des événements parsés
+ */
 function parseWindowsEvents(text, maxEvents = 5) {
   const raw = String(text || '').replace(/\r/g, '');
   const chunks = raw
@@ -3096,6 +3458,12 @@ function parseWindowsEvents(text, maxEvents = 5) {
   return events.slice(0, maxEvents);
 }
 
+/**
+ * Parse un tableau texte formaté (ex: Get-Process output)
+ * @param {string} text - La sortie texte
+ * @param {number} maxRows - Nombre max de lignes à retourner
+ * @returns {Array} - Liste des lignes parsées
+ */
 function parseSimpleTable(text, maxRows = 8) {
   const lines = String(text || '')
     .replace(/\r/g, '')
@@ -3115,6 +3483,11 @@ function truncateLine(text, max = 180) {
   return clean.length > max ? clean.slice(0, max) + '...' : clean;
 }
 
+/**
+ * Formate le résultat d'un diagnostic de santé système pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec erreurs système, services et performances
+ */
 function formatSystemHealthResult(result) {
   const computerInfo = findCommand(result, 'Get-ComputerInfo');
   const events = findCommand(result, 'Get-WinEvent');
@@ -3183,12 +3556,22 @@ function formatSystemHealthResult(result) {
   ].join('\n').slice(0, 7000);
 }
 
+/**
+ * Formate une valeur booléenne pour l'affichage
+ * @param {boolean|string} value - La valeur à formater
+ * @returns {string} - 'Oui', 'Non' ou 'Non détecté'
+ */
 function formatBool(value) {
   if (value === true || String(value).toLowerCase() === 'true') return 'Oui';
   if (value === false || String(value).toLowerCase() === 'false') return 'Non';
   return 'Non détecté';
 }
 
+/**
+ * Convertit un code de sévérité en label texte
+ * @param {number} value - Le code de sévérité (1-5+)
+ * @returns {string} - Le label (Critique, Élevée, Moyenne, Faible)
+ */
 function severityLabel(value) {
   const severity = Number(value);
 
@@ -3200,6 +3583,11 @@ function severityLabel(value) {
   return 'Non détecté';
 }
 
+/**
+ * Formate le résultat d'un diagnostic Defender/sécurité pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec état antivirus, menaces, pare-feu
+ */
 function formatDefenderSecurityResult(result) {
   const statusCommand = findCommand(result, 'Get-MpComputerStatus');
   const threatsCommand = findCommand(result, 'Get-MpThreat');
@@ -3274,6 +3662,11 @@ function formatDefenderSecurityResult(result) {
     conclusion.map(x => `- ${x}`).join('\n')
   ].join('\n').slice(0, 7000);
 }
+/**
+ * Parse un JSON de manière sécurisée et retourne un tableau
+ * @param {string} text - Le texte JSON
+ * @returns {Array} - Le tableau parsé ou tableau vide
+ */
 function safeJsonParseArray(text) {
   try {
     const raw = String(text || '').trim();
@@ -3369,6 +3762,11 @@ function formatUserSessionResult(result) {
       : '- Les informations utilisateur sont partielles. Vérifier les droits ou la langue système si nécessaire.'
   ].join('\n').slice(0, 7000);
 }
+/**
+ * Formate le résultat d'un diagnostic de stockage pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec volumes, disques et scan
+ */
 function formatStorageManagementResult(result) {
   const volumes = findCommand(result, 'Get-Volume');
   const disks = findCommand(result, 'Get-PhysicalDisk');
@@ -3396,6 +3794,11 @@ function formatStorageManagementResult(result) {
   ].join('\n').slice(0, 7000);
 }
 
+/**
+ * Formate le résultat d'un audit sécurité pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec utilisateurs, tâches et règles
+ */
 function formatSecurityAuditResult(result) {
   const users = findCommand(result, 'Get-LocalUser');
   const tasks = findCommand(result, 'Get-ScheduledTask');
@@ -3445,6 +3848,11 @@ function serviceStatusLabel(service) {
   return service.Status || 'Non détecté';
 }
 
+/**
+ * Formate le résultat d'un diagnostic d'accès distant pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec Bureau à distance, WinRM, pare-feu
+ */
 function formatRemoteAccessResult(result) {
   const servicesCommand = findCommand(result, 'Get-Service TermService');
   const wsmanCommand = findCommand(result, 'Test-WSMan');
@@ -3518,11 +3926,23 @@ function formatRemoteAccessResult(result) {
   ].join('\n').slice(0, 7000);
 }
 
+/**
+ * Extrait une valeur via regex
+ * @param {string} text - Le texte à analyser
+ * @param {RegExp} regex - Le pattern regex
+ * @param {string} fallback - Valeur par défaut si non trouvé
+ * @returns {string} - La valeur extraite ou fallback
+ */
 function extractRegexValue(text, regex, fallback = 'Non détecté') {
   const match = String(text || '').match(regex);
   return match && match[1] ? match[1].trim() : fallback;
 }
 
+/**
+ * Formate le résultat d'un test de débit Internet pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec débits, latence et perte paquets
+ */
 function formatSpeedtestResult(result) {
   const speedtest = findCommand(result, 'speedtest');
 
@@ -3625,6 +4045,11 @@ function formatBatteryRuntime(value) {
   return `${hours} h ${remainingMinutes} min`;
 }
 
+/**
+ * Formate le résultat d'un diagnostic de batterie pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec charge, état et autonomie
+ */
 function formatBatteryHealthResult(result) {
   const batteryCommand = findCommand(result, 'Win32_Battery');
   const reportCommand = findCommand(result, 'batteryreport');
@@ -3721,6 +4146,11 @@ function formatWindowsDate(value) {
   return date.toLocaleDateString('fr-FR');
 }
 
+/**
+ * Formate le résultat d'un diagnostic Windows Update pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec services, correctifs et scan
+ */
 function formatWindowsUpdateResult(result) {
   const servicesCommand = findCommand(result, 'Get-Service wuauserv');
   const hotfixCommand = findCommand(result, 'Get-HotFix');
@@ -3806,6 +4236,11 @@ function removeRawCommandNoise(text) {
   return cleanDiagnosticText(value, 1200);
 }
 
+/**
+ * Formate le résultat de la détection de port switch (LLDP/CDP) pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec équipement détecté et port
+ */
 function formatSwitchPortResult(result) {
   const command = findCommand(result, 'PSDiscoveryProtocol') || (result.results || [])[0];
 
@@ -3950,6 +4385,11 @@ function formatOfficeChannel(channel) {
   return value;
 }
 
+/**
+ * Formate le résultat d'un diagnostic Outlook/Teams pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec applications et configuration
+ */
 function formatOfficeDiagnosticsResult(result) {
   const processCommand = findCommand(result, 'Get-Process');
   const configCommand = findCommand(result, 'ClickToRun');
@@ -4393,6 +4833,11 @@ function formatVpnStatus(value) {
   return text;
 }
 
+/**
+ * Formate le résultat d'un diagnostic d'accès distant pour Teams
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat avec profils VPN et adaptateurs
+ */
 function formatVpnDiagnosticsResult(result) {
   const vpnConnectionCommand =
     findCommand(result, 'Get-VpnConnection') ||
@@ -4461,6 +4906,11 @@ function formatVpnDiagnosticsResult(result) {
   ].join('\n').slice(0, 7000);
 }
 
+/**
+ * Route tous les résultats de diagnostic vers le bon formateur selon le type
+ * @param {object} result - Le résultat du diagnostic
+ * @returns {string} - Résultat formaté pour Teams
+ */
 function formatDiagnosticResultForTeams(result) {
   if (!result) {
     return 'Aucun résultat de diagnostic disponible.';
@@ -4644,6 +5094,11 @@ case 'user_session':
   }
 }
 
+/**
+ * Envoie le résultat d'un diagnostic à Teams via l'adaptateur
+ * @param {object} job - Le job de diagnostic avec résultat et référence conversation
+ * @returns {Promise<boolean>} - True si envoyé avec succès
+ */
 async function sendDiagnosticResultToTeams(job) {
   if (!job || !job.conversationReference || !job.result || !teamsAdapter) {
     return false;
@@ -4682,6 +5137,10 @@ async function sendDiagnosticResultToTeams(job) {
 
 //Récupérer l’ID du site SharePoint
 
+/**
+ * Récupère l'ID du site SharePoint via l'API Graph
+ * @returns {Promise<string>} - L'ID du site
+ */
 async function getSharePointSiteId() {
   const token = await getGraphToken();
   const rawHostname = process.env.SHAREPOINT_HOSTNAME || '';
@@ -4709,6 +5168,10 @@ async function getSharePointSiteId() {
 }
 
 //Lister les bibliothèques de documents
+/**
+ * Liste toutes les bibliothèques de documents du site SharePoint
+ * @returns {Promise<Array>} - Tableau des bibliothèques avec id, name et webUrl
+ */
 async function listDocumentLibraries() {
   const token = await getGraphToken();
   const siteId = await getSharePointSiteId();
@@ -4726,6 +5189,12 @@ webUrl: drive.webUrl
 }
 
 //Lister les documents dans une bibliothèque
+/**
+ * Liste les documents dans une bibliothèque SharePoint
+ * @param {string} driveId - L'ID de la bibliothèque
+ * @param {string} folderId - L'ID du dossier (root par défaut)
+ * @returns {Promise<Array>} - Liste des éléments (fichiers et dossiers)
+ */
 async function listDocuments(driveId, folderId = 'root') {
 const token = await getGraphToken();
 const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${folderId}/children`;
@@ -4746,6 +5215,12 @@ downloadUrl: item["@microsoft.graph.downloadUrl"] || null
 
 //Télécharger le contenu d’un document
 
+/**
+ * Télécharge le contenu brut d'un document depuis SharePoint
+ * @param {string} driveId - L'ID de la bibliothèque
+ * @param {string} itemId - L'ID du document
+ * @returns {Promise<Buffer>} - Le contenu du fichier en Buffer
+ */
 async function downloadDocument(driveId, itemId) {
   const token = await getGraphToken();
  
@@ -4762,6 +5237,13 @@ async function downloadDocument(driveId, itemId) {
 }
 
 
+/**
+ * Cherche les documents dans SharePoint par query texte
+ * @param {string} driveId - L'ID de la bibliothèque
+ * @param {string} query - Le texte de recherche
+ * @param {string} folderId - L'ID du dossier de recherche
+ * @returns {Promise<Array>} - Résultats de la recherche
+ */
 async function searchDocuments(driveId, query, folderId = 'root') {
   const token = await getGraphToken();
  
@@ -4782,6 +5264,13 @@ async function searchDocuments(driveId, query, folderId = 'root') {
 }
 
 // Find the target folder by name (e.g., "D4B ChatBot Teams")
+/**
+ * Trouve un dossier par nom dans la bibliothèque SharePoint
+ * @param {string} driveId - L'ID de la bibliothèque
+ * @param {string} targetFolderName - Le nom du dossier à chercher
+ * @param {string} parentFolderId - L'ID du parent de recherche
+ * @returns {Promise<object|null>} - L'objet dossier trouvé ou null
+ */
 async function findFolderByName(driveId, targetFolderName, parentFolderId = 'root') {
   try {
     const items = await listDocuments(driveId, parentFolderId);
@@ -4793,6 +5282,12 @@ async function findFolderByName(driveId, targetFolderName, parentFolderId = 'roo
   }
 }
 
+/**
+ * Récupère l'ID du dossier KB dans SharePoint (depuis env ou découverte)
+ * @param {string} driveId - L'ID de la bibliothèque
+ * @param {string} folderName - Le nom du dossier à chercher
+ * @returns {Promise<string|null>} - L'ID du dossier ou null
+ */
 async function getTargetKbFolderId(driveId, folderName = 'D4B ChatBot Teams') {
   if (process.env.SHAREPOINT_KB_FOLDER_ID) {
     return process.env.SHAREPOINT_KB_FOLDER_ID.trim();
@@ -4845,6 +5340,11 @@ function extractDocxText(buffer) {
   }
   return '';
 }
+/**
+ * Normalise une identité utilisateur pour comparaison (domaine enlevé, casse basse)
+ * @param {string} value - L'identité brute (ex: AZUREAD\\user.name)
+ * @returns {string} - L'identité normalisée
+ */
 function normalizeIdentity(value) {
   return String(value || '')
     .trim()
@@ -4893,52 +5393,13 @@ function identitiesLookSame(a, b) {
   return hits.length >= 2;
 }
 
-function findDeviceForTeamsUser(userEmail, userName) {
-  const onlineDevices = getOnlineDevices();
-
-  const emailPrefix = String(userEmail || '').split('@')[0];
-
-  const candidates = [
-    userName,
-    userEmail,
-    emailPrefix
-  ].filter(Boolean);
-
-  const matches = onlineDevices.filter(device => {
-    const deviceValues = [
-      device.username,
-      device.windowsUsername,
-      device.hostname,
-      device.deviceId
-    ].filter(Boolean);
-
-    return candidates.some(candidate =>
-      deviceValues.some(deviceValue =>
-        identitiesLookSame(candidate, deviceValue)
-      )
-    );
-  });
-
-  console.log('Device auto-match debug:', {
-    userEmail,
-    userName,
-    candidates,
-    onlineDevices: onlineDevices.map(device => ({
-      deviceId: device.deviceId,
-      username: device.username,
-      hostname: device.hostname,
-      ip: device.ip
-    })),
-    matches: matches.map(device => device.deviceId)
-  });
-
-  if (matches.length === 1) {
-    return matches[0];
-  }
-
-  return null;
-}
-
+/**
+ * Cherche automatiquement l'appareil d'un utilisateur Teams dans les appareils connect\u00e9s
+ * Utilise le nom d'utilisateur, hostname ou email pour correspondance
+ * @param {string} userEmail - L'email Teams de l'utilisateur
+ * @param {string} userName - Le nom d'affichage Teams de l'utilisateur
+ * @returns {object|null} - L'appareil trouv\u00e9 ou null
+ */
 function findDeviceForTeamsUser(userEmail, userName) {
   const onlineDevices = getOnlineDevices();
 
@@ -4972,8 +5433,15 @@ function findDeviceForTeamsUser(userEmail, userName) {
 
   return null;
 }
+/**
+ * Charge l'index de connaissances depuis les fichiers locaux data/kb
+ * Supporte JSON, DOCX et fichiers texte
+ */
+/**
+ * Charge l'index de connaissances depuis les fichiers locaux data/kb
+ * Supporte JSON, DOCX et fichiers texte
+ */
 function loadKnowledgeIndex() {
-  ensureKbDir();
   KNOWLEDGE = [];
   const files = fs.readdirSync(KB_DIR).filter(f => fs.statSync(path.join(KB_DIR, f)).isFile());
   for (const f of files) {
@@ -5005,8 +5473,19 @@ function loadKnowledgeIndex() {
   console.log(` Loaded ${KNOWLEDGE.length} knowledge files`);
 }
 
+/**
+ * Cherche dans la base de connaissances locale par mots-clés
+ * @param {string} query - La requête de recherche
+ * @param {number} maxSnippets - Nombre maximum de résultats
+ * @returns {string} - Les extraits trouvés formatés
+ */
+/**
+ * Cherche dans la base de connaissances locale par mots-clés
+ * @param {string} query - La requête de recherche
+ * @param {number} maxSnippets - Nombre maximum de résultats
+ * @returns {string} - Les extraits trouvés formatés
+ */
 function searchKnowledge(query, maxSnippets = 3) {
-  if (!query || KNOWLEDGE.length === 0) return '';
   const q = String(query).toLowerCase();
   const tokens = q.split(/\W+/).filter(Boolean);
   if (tokens.length === 0) return '';
@@ -5039,8 +5518,19 @@ function searchKnowledge(query, maxSnippets = 3) {
 }
 
 // Fetch snippets from SharePoint (uses Graph helper functions defined above)
+/**
+ * Récupère les extraits de SharePoint pour une requête
+ * @param {string} query - La requête de recherche
+ * @param {number} maxSnippets - Nombre maximum de résultats
+ * @returns {Promise<string>} - Les extraits trouvés ou chaîne vide
+ */
+/**
+ * Récupère les extraits de SharePoint pour une requête
+ * @param {string} query - La requête de recherche
+ * @param {number} maxSnippets - Nombre maximum de résultats
+ * @returns {Promise<string>} - Les extraits trouvés ou chaîne vide
+ */
 async function getSharePointSnippets(query, maxSnippets = 3) {
-  try {
     if (!query) return '';
     const libs = await listDocumentLibraries();
     if (!libs || libs.length === 0) return '';
@@ -5095,8 +5585,13 @@ console.log(' Request store:', path.resolve(REQUESTS_FILE));
 let guestSessions = [];
 
 // Load existing guest sessions from file
+/**
+ * Charge les sessions invités depuis le fichier data/guest_sessions.json
+ */
+/**
+ * Charge les sessions invités depuis le fichier data/guest_sessions.json
+ */
 function loadGuestSessions() {
-  try {
     if (fs.existsSync(GUEST_SESSIONS_FILE)) {
       const data = fs.readFileSync(GUEST_SESSIONS_FILE, 'utf8');
       guestSessions = JSON.parse(data);
@@ -5113,8 +5608,13 @@ function loadGuestSessions() {
 }
 
 // Save guest sessions to file
+/**
+ * Enregistre les sessions invités dans le fichier data/guest_sessions.json
+ */
+/**
+ * Enregistre les sessions invités dans le fichier data/guest_sessions.json
+ */
 function saveGuestSessions() {
-  try {
     fs.writeFileSync(GUEST_SESSIONS_FILE, JSON.stringify(guestSessions, null, 2));
     console.log(` Saved ${guestSessions.length} guest sessions to file`);
   } catch (error) {
@@ -5145,12 +5645,23 @@ const mimeTypes = {
 };
 
 // Helper function to send JSON response
+/**
+ * Envoie une réponse JSON au client
+ * @param {object} res - La réponse HTTP
+ * @param {number} statusCode - Le code HTTP
+ * @param {object} data - Les données à envoyer
+ */
 function sendJsonResponse(res, statusCode, data) {
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
 
 // Helper functions for JSON file operations
+/**
+ * Lit un fichier JSON de manière sécurisée (retourne [] en cas d'erreur)
+ * @param {string} p - Le chemin du fichier
+ * @returns {Array} - Le contenu JSON parsé ou tableau vide
+ */
 function readJsonSafe(p) { 
   try { 
     return JSON.parse(fs.readFileSync(p, 'utf8')); 
@@ -5159,6 +5670,11 @@ function readJsonSafe(p) {
   } 
 }
 
+/**
+ * Écrit un objet JSON dans un fichier de manière sécurisée
+ * @param {string} p - Le chemin du fichier
+ * @param {object} obj - L'objet à écrire
+ */
 function writeJsonSafe(p, obj) { 
   try {
     fs.writeFileSync(p, JSON.stringify(obj, null, 2)); 
@@ -5169,6 +5685,11 @@ function writeJsonSafe(p, obj) {
 }
 
 // Helper function to parse request body
+/**
+ * Parse le corps d'une requête HTTP (JSON)
+ * @param {object} req - La requête HTTP
+ * @returns {Promise<object>} - Les données parsées
+ */
 function parseRequestBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -5186,6 +5707,11 @@ function parseRequestBody(req) {
 }
 
 // --- Mistral proxy endpoint ---
+/**
+ * Lit le corps d'une requête HTTP JSON de manière async
+ * @param {object} req - La requête HTTP
+ * @returns {Promise<object>} - Les données JSON ou objet vide
+ */
 async function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -5198,6 +5724,11 @@ async function readJson(req) {
   });
 }
 
+/**
+ * Décode un JWT et retourne le payload
+ * @param {string} token - Le token JWT
+ * @returns {object|null} - Le payload décodé ou null
+ */
 function decodeJwtPayload(token) {
   try {
     const parts = token.split('.');
@@ -5208,6 +5739,11 @@ function decodeJwtPayload(token) {
     return null;
   }
 }
+/**
+ * Crée un job de ticket Atera avec les données formatées
+ * @param {object} body - Les données du ticket (name, email, category, priority, etc.)
+ * @returns {Promise<object>} - La réponse d'Atera avec l'ID du ticket
+ */
 async function createAteraTicket(body) {
   if (!process.env.ATERA_API_KEY || !process.env.ATERA_API_URL) {
     throw new Error('Missing ATERA_API_KEY or ATERA_API_URL on server');
@@ -5317,6 +5853,12 @@ async function createAteraTicket(body) {
 
   return aData;
 }
+/**
+ * Gére toutes les routes API du serveur
+ * @param {object} req - La requête HTTP
+ * @param {object} res - La réponse HTTP
+ * @returns {Promise<boolean>} - True si gérée, false sinon
+ */
 async function handleApi(req, res) {
   try {
     
