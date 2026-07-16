@@ -987,11 +987,11 @@ function formatMaterielMenu() {
     ``,
     `Choisissez une option en tapant le numéro correspondant :`,
     ``,
-    `1 - Historique matériel`,
-    ``,
-    `2 - Inventaire par emplacement (liste des matériels)`,
-    ``,
-    `3 - Suivi Chronopost`
+`1️⃣ Historique matériel — le parcours complet d'un appareil (statuts, swaps, réparations)`
+``,
+`2️⃣ Inventaire par emplacement — la liste des matériels par site`
+``,
+`3️⃣ Suivi Chronopost — le suivi de vos livraisons`
   ].join('\n');
 }
 
@@ -2224,24 +2224,19 @@ if (isMaterielHistoryRequest(text)) {
 // Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
  const welcomeParts = [
-  `Bonjour ! Je suis là pour vous aider avec tout problème ou question lié au support IT pour les équipes D4B (réseau, Wi-Fi, matériel, imprimantes, authentification, etc.)`,
-
-  `Voici ce que je peux faire pour vous :`,
-
-  `Vous dépanner — décrivez-moi ce qui ne va pas, et je vais essayer de résoudre le problème avec vous directement.`,
-
-  `Pour commencer, dites-moi ce qui ne va pas 👇`,
-
-  `🎫 Pour créer un ticket, écrivez « ticket ».`,
-
-[
-  `📦 Pour accéder au module matériel, écrivez « matériel ».`,
-  ``,
-  `1 - Historique matériel`,
-  ``,
-  `2 - Inventaire par emplacement (liste des matériels)`,
-  ``,
-  `3 - Suivi Chronopost`
+  `👋 Bonjour !`
+ 
+`Je suis l'assistant interne de D4B : je vous donne accès à nos outils internes directement depuis Teams, en libre-service.`
+ 
+`Nos équipes Dev me font évoluer en continu. À utiliser dès maintenant, le module Matériel (tapez « matériel ») :`
+``,
+`1️⃣ Historique matériel — le parcours complet d'un appareil (statuts, swaps, réparations)`
+``,
+`2️⃣ Inventaire par emplacement — la liste des matériels par site`
+``,
+`3️⃣ Suivi Chronopost — le suivi de vos livraisons`
+``,
+`👉 D'autres fonctionnalités arriveront prochainement.`
 ].join('\n')
 ];
 
