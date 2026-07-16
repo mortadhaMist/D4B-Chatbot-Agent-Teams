@@ -987,9 +987,9 @@ function formatMaterielMenu() {
     ``,
     `Choisissez une option en tapant le numéro correspondant :`,
     ``,
-`1️⃣ Historique matériel — le parcours complet d'un appareil (statuts, swaps, réparations)`
+`1️⃣ Historique matériel — le parcours complet d'un appareil (statuts, swaps, réparations)`,
 ``,
-`2️⃣ Inventaire par emplacement — la liste des matériels par site`
+`2️⃣ Inventaire par emplacement — la liste des matériels par site`,
 ``,
 `3️⃣ Suivi Chronopost — le suivi de vos livraisons`
   ].join('\n');
@@ -2243,9 +2243,10 @@ if (isGreetingOnly(text)) {
 
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
 
-  for (const part of welcomeParts) {
+ /* for (const part of welcomeParts) {
     await context.sendActivity(part);
-  }
+  }*/
+ await context.sendActivity(welcomeText);
 
   await next();
   return;
