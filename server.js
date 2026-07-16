@@ -2227,7 +2227,7 @@ if (isMaterielHistoryRequest(text)) {
 
 // Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
-  const welcomeText = [
+  const welcomeParts = [
     `👋 Bonjour !`,
     
     `Je suis l'assistant interne de D4B : je vous donne accès à nos outils internes directement depuis Teams, en libre-service.`,
