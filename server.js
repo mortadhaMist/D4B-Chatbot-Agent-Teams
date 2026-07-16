@@ -1143,29 +1143,42 @@ function createMaterielMenuCard() {
         type: 'TextBlock',
         text: 'Choisissez une option :',
         wrap: true
-      }
-    ],
-    actions: [
-      {
-        type: 'Action.Submit',
-        title: '1️⃣ - Historique matériel',
-        data: {
-          materielChoice: '1'
-        }
       },
       {
-        type: 'Action.Submit',
-        title: '2️⃣ - Inventaire par emplacement',
-        data: {
-          materielChoice: '2'
-        }
+        type: 'ActionSet',
+        actions: [
+          {
+            type: 'Action.Submit',
+            title: '1️⃣ - Historique matériel',
+            data: {
+              materielChoice: '1'
+            }
+          }
+        ]
       },
       {
-        type: 'Action.Submit',
-        title: '3️⃣ - Suivi Chronopost',
-        data: {
-          materielChoice: '3'
-        }
+        type: 'ActionSet',
+        actions: [
+          {
+            type: 'Action.Submit',
+            title: '2️⃣ - Inventaire par emplacement',
+            data: {
+              materielChoice: '2'
+            }
+          }
+        ]
+      },
+      {
+        type: 'ActionSet',
+        actions: [
+          {
+            type: 'Action.Submit',
+            title: '3️⃣ - Suivi Chronopost',
+            data: {
+              materielChoice: '3'
+            }
+          }
+        ]
       }
     ]
   };
