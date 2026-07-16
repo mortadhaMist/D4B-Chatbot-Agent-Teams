@@ -2227,30 +2227,25 @@ if (isMaterielHistoryRequest(text)) {
 
 // Message d'accueil quand l'utilisateur dit juste bonjour
 if (isGreetingOnly(text)) {
-const welcomeText = [
-  `👋 Bonjour !`,
-  ``,
-  `Je suis l'assistant interne de D4B : je vous donne accès à nos outils internes directement depuis Teams, en libre-service.`,
-  ``,
-  `Nos équipes Dev me font évoluer en continu. À utiliser dès maintenant, le module Matériel (tapez « matériel ») :`,
-  ``,
-  `1️⃣ Historique matériel — le parcours complet d'un appareil (statuts, swaps, réparations)`,
-  ``,
-  `2️⃣ Inventaire par emplacement — la liste des matériels par site`,
-  ``,
-  `3️⃣ Suivi Chronopost — le suivi de vos livraisons`,
-  ``,
-  `👉 D'autres fonctionnalités arriveront prochainement.`
-].join('\n');
-
-  const welcomeText = welcomeParts.join('\n\n');
+  const welcomeText = [
+    `👋 Bonjour !`,
+    ``,
+    `Je suis l'assistant interne de D4B : je vous donne accès à nos outils internes directement depuis Teams, en libre-service.`,
+    ``,
+    `Nos équipes Dev me font évoluer en continu. À utiliser dès maintenant, le module Matériel (tapez « matériel ») :`,
+    ``,
+    `1️⃣ Historique matériel — le parcours complet d'un appareil (statuts, swaps, réparations)`,
+    ``,
+    `2️⃣ Inventaire par emplacement — la liste des matériels par site`,
+    ``,
+    `3️⃣ Suivi Chronopost — le suivi de vos livraisons`,
+    ``,
+    `👉 D'autres fonctionnalités arriveront prochainement.`
+  ].join('\n');
 
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
 
- /* for (const part of welcomeParts) {
-    await context.sendActivity(part);
-  }*/
- await context.sendActivity(welcomeText);
+  await context.sendActivity(welcomeText);
 
   await next();
   return;
