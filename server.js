@@ -5531,41 +5531,64 @@ function searchKnowledge(query, maxSnippets = 3) {
  * @returns {Promise<string>} - Les extraits trouvés ou chaîne vide
  */
 async function getSharePointSnippets(query, maxSnippets = 3) {
+  try {
     if (!query) return '';
+
     const libs = await listDocumentLibraries();
     if (!libs || libs.length === 0) return '';
-    const documentsLib = libs.find(lib => lib.name && lib.name.toLowerCase().includes('documents')) || libs[0];
+
+    const documentsLib =
+      libs.find(lib => lib.name && lib.name.toLowerCase().includes('documents')) ||
+      libs[0];
+
     if (!documentsLib) return '';
-    
+
     const folderId = await getTargetKbFolderId(documentsLib.id);
+
     if (!folderId) {
       console.warn('No SharePoint KB folder found for snippets');
       return '';
     }
-    
+
     const results = await searchDocuments(documentsLib.id, query, folderId);
     if (!results || results.length === 0) return '';
+
     const pieces = [];
+
     for (let i = 0; i < Math.min(maxSnippets, results.length); i++) {
       const it = results[i];
+
       try {
         const raw = await downloadDocument(documentsLib.id, it.id).catch(() => null);
         if (!raw) continue;
+
         const name = it.name || 'document';
         const ext = (path.extname(name) || '').toLowerCase();
+
         let text = '';
+
         if (ext === '.docx') {
           text = extractDocxText(Buffer.from(raw));
         } else {
-          try { text = Buffer.from(raw).toString('utf8').replace(/\s+/g, ' ').trim(); } catch (e) { text = ''; }
+          try {
+            text = Buffer.from(raw).toString('utf8').replace(/\s+/g, ' ').trim();
+          } catch {
+            text = '';
+          }
         }
+
         if (!text) continue;
-        if (text.length > 400) text = text.slice(0, 400) + '...';
+
+        if (text.length > 400) {
+          text = text.slice(0, 400) + '...';
+        }
+
         pieces.push(`From SharePoint (${name}): ${text}`);
       } catch (e) {
         console.warn('SharePoint snippet fetch failed for', it?.name, e?.message || e);
       }
     }
+
     return pieces.join('\n');
   } catch (e) {
     console.warn('getSharePointSnippets failed', e?.message || e);
@@ -5592,12 +5615,12 @@ let guestSessions = [];
  * Charge les sessions invités depuis le fichier data/guest_sessions.json
  */
 function loadGuestSessions() {
+  try {
     if (fs.existsSync(GUEST_SESSIONS_FILE)) {
       const data = fs.readFileSync(GUEST_SESSIONS_FILE, 'utf8');
       guestSessions = JSON.parse(data);
       console.log(` Loaded ${guestSessions.length} guest sessions from file`);
     } else {
-      // Create the file if it doesn't exist
       fs.writeFileSync(GUEST_SESSIONS_FILE, JSON.stringify([], null, 2));
       console.log(' Created new guest sessions file');
     }
@@ -5615,6 +5638,7 @@ function loadGuestSessions() {
  * Enregistre les sessions invités dans le fichier data/guest_sessions.json
  */
 function saveGuestSessions() {
+  try {
     fs.writeFileSync(GUEST_SESSIONS_FILE, JSON.stringify(guestSessions, null, 2));
     console.log(` Saved ${guestSessions.length} guest sessions to file`);
   } catch (error) {
