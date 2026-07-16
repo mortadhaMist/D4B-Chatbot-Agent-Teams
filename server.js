@@ -2237,8 +2237,7 @@ if (isGreetingOnly(text)) {
 `3️⃣ Suivi Chronopost — le suivi de vos livraisons`
 ``,
 `👉 D'autres fonctionnalités arriveront prochainement.`
-].join('\n')
-];
+].join('\n');
 
   const welcomeText = welcomeParts.join('\n\n');
 
