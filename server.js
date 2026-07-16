@@ -2378,7 +2378,7 @@ if (normalizedMaterielChoice === '1') {
   const replyText = formatMaterielPrompt();
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await sendActivityWithMaterielMenu(context, replyText);
+  await context.sendActivity(replyText);
 
   await next();
   return;
@@ -2395,7 +2395,7 @@ if (normalizedMaterielChoice === '2') {
   const replyText = formatInventaireEmplacementPrompt();
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await sendActivityWithMaterielMenu(context, replyText);
+  await context.sendActivity(replyText);
 
   await next();
   return;
@@ -2411,7 +2411,7 @@ if (normalizedMaterielChoice === '3') {
   const replyText = formatSuiviChronopostPrompt();
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await sendActivityWithMaterielMenu(context, replyText);
+  await context.sendActivity(replyText);
 
   await next();
   return;
