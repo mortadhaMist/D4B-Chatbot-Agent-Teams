@@ -1148,21 +1148,21 @@ function createMaterielMenuCard() {
     actions: [
       {
         type: 'Action.Submit',
-        title: '1 - Historique matériel',
+        title: '1️⃣ - Historique matériel',
         data: {
           materielChoice: '1'
         }
       },
       {
         type: 'Action.Submit',
-        title: '2 - Inventaire par emplacement',
+        title: '2️⃣ - Inventaire par emplacement',
         data: {
           materielChoice: '2'
         }
       },
       {
         type: 'Action.Submit',
-        title: '3 - Suivi Chronopost',
+        title: '3️⃣ - Suivi Chronopost',
         data: {
           materielChoice: '3'
         }
