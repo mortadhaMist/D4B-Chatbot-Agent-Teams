@@ -2241,11 +2241,14 @@ if (isGreetingOnly(text)) {
     `3️⃣ Suivi Chronopost — le suivi de vos livraisons`,
     ``,
     `👉 D'autres fonctionnalités arriveront prochainement.`
-  ].join('\n');
+  ];
+  const welcomeText = welcomeParts.join('\n\n');
 
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
 
-  await context.sendActivity(welcomeText);
+  for (const part of welcomeParts) {
+    await context.sendActivity(part);
+  }
 
   await next();
   return;
