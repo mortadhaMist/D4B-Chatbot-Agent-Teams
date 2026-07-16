@@ -2466,19 +2466,22 @@ if (isMaterielHistoryRequest(text)) {
   return;
 }
 if (isGreetingOnly(text)) {
-  const welcomeText = [
+  const welcomeParts = [
     `👋 Bonjour !`,
-    ``,
+    
     `Je suis l'assistant interne de D4B : je vous donne accès à nos outils internes directement depuis Teams, en libre-service.`,
-    ``,
+    
     `Nos équipes Dev me font évoluer en continu. À utiliser dès maintenant, le module Matériel : choisissez une option ci-dessous ou tapez « matériel ».`,
-    ``,
+    
     `👉 D'autres fonctionnalités arriveront prochainement.`
-  ].join('\n');
+  ];
 
+  const welcomeText = welcomeParts.join('\n\n');
   saveTeamsConversationTurn(teamsConversationKey, text, welcomeText);
 
-  await context.sendActivity(welcomeText);
+    for (const part of welcomeParts) {
+    await context.sendActivity(part);
+  }
   await sendMaterielMenuCard(context);
 
   await next();
