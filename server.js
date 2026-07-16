@@ -1182,6 +1182,16 @@ async function sendMaterielMenuCard(context) {
   });
 }
 
+async function sendActivityWithMaterielMenu(context, text) {
+  const cleanText = String(text || '').trim();
+
+  if (cleanText) {
+    await context.sendActivity(cleanText);
+  }
+
+  await sendMaterielMenuCard(context);
+}
+
 /**
  * Formate le menu d'accès au module matériel pour Teams
  * @returns {string} - Menu formaté avec les options disponibles
@@ -2266,7 +2276,7 @@ if (pendingMateriel) {
       pendingMaterielLookup.delete(teamsConversationKey);
       saveTeamsConversationTurn(teamsConversationKey, text, replyText);
 
-      await context.sendActivity(replyText);
+      await sendActivityWithMaterielMenu(context, replyText);
     } catch (error) {
       console.error('Materiel API lookup failed:', error);
 
@@ -2303,7 +2313,7 @@ const replyText = inventoryReply.text;
 pendingMaterielLookup.delete(teamsConversationKey);
 saveTeamsConversationTurn(teamsConversationKey, text, replyText);
 
-await context.sendActivity(replyText);
+await sendActivityWithMaterielMenu(context, replyText);
     } catch (error) {
       console.error('Inventaire emplacement API lookup failed:', error);
 
@@ -2338,7 +2348,7 @@ await context.sendActivity(replyText);
     pendingMaterielLookup.delete(teamsConversationKey);
     saveTeamsConversationTurn(teamsConversationKey, text, replyText);
 
-    await context.sendActivity(replyText);
+   await sendActivityWithMaterielMenu(context, replyText);
   } catch (error) {
     console.error('Suivi Chronopost API lookup failed:', error);
 
@@ -2368,7 +2378,7 @@ if (normalizedMaterielChoice === '1') {
   const replyText = formatMaterielPrompt();
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await context.sendActivity(replyText);
+  await sendActivityWithMaterielMenu(context, replyText);
 
   await next();
   return;
@@ -2385,7 +2395,7 @@ if (normalizedMaterielChoice === '2') {
   const replyText = formatInventaireEmplacementPrompt();
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await context.sendActivity(replyText);
+  await sendActivityWithMaterielMenu(context, replyText);
 
   await next();
   return;
@@ -2401,7 +2411,7 @@ if (normalizedMaterielChoice === '3') {
   const replyText = formatSuiviChronopostPrompt();
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await context.sendActivity(replyText);
+  await sendActivityWithMaterielMenu(context, replyText);
 
   await next();
   return;
@@ -2427,7 +2437,7 @@ if (isMaterielHistoryRequest(text)) {
       const replyText = formatMaterielHistoryForTeams(imei, materielData);
 
       saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-      await context.sendActivity(replyText);
+      await sendActivityWithMaterielMenu(context, replyText);
     } catch (error) {
       console.error('Materiel API lookup failed:', error);
 
@@ -2450,7 +2460,7 @@ if (isMaterielHistoryRequest(text)) {
   const replyText = formatMaterielPrompt();
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await context.sendActivity(replyText);
+  await sendActivityWithMaterielMenu(context, replyText);
 
   await next();
   return;
@@ -2589,7 +2599,7 @@ const replyText =
   `Je vous enverrai automatiquement le résultat dès que l’agent aura terminé.`;
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await context.sendActivity(replyText);
+  await sendActivityWithMaterielMenu(context, replyText);
   await next();
   return;
 }
@@ -2808,7 +2818,7 @@ try {
   replyText = appendTechnicienPromptOnce(replyText);
 
   saveTeamsConversationTurn(teamsConversationKey, text, replyText);
-  await context.sendActivity(replyText);
+  await sendActivityWithMaterielMenu(context, replyText);
 } catch (e) {
   console.error('Teams->chat proxy error:', e);
   await context.sendActivity('Sorry, an error occurred while processing your message.');
