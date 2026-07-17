@@ -26,6 +26,9 @@ const MAX_TEAMS_HISTORY_TURNS = 20; // Limite du nombre de tours de conversation
 const diagnosticJobs = []; // Liste de tous les jobs de diagnostic en cours et complétés
 const pendingDiagnostics = new Map(); // Diagnostics en attente de confirmation par l'utilisateur Teams
 const pendingMaterielLookup = new Map(); // Recherches matériel/inventaire en attente
+
+const hfsqlReportJobs = [];
+const HFSQL_REPORT_MAX_PREVIEW_ROWS = 20;
 let d4bApiTokenCache = {
   token: null, // Token JWT pour l'API D4B
   expiresAt: 0 // Timestamp d'expiration du token
@@ -119,6 +122,154 @@ function getOnlineDevices(maxAgeMs = 90000) {
     const lastSeen = Date.parse(device.lastSeenAt || '');
     return Number.isFinite(lastSeen) && now - lastSeen <= maxAgeMs;
   });
+}
+
+function isValidHfsqlAgent(req) {
+  const expected = process.env.HFSQL_AGENT_TOKEN;
+
+  if (!expected) {
+    console.warn('HFSQL_AGENT_TOKEN is missing on Render.');
+    return false;
+  }
+
+  const authHeader = req.headers.authorization || '';
+  const received = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+  return received === expected;
+}
+
+function createHfsqlReportJob({
+  reportType,
+  tableName,
+  sql,
+  params,
+  limit,
+  requestedBy,
+  teamsConversationReference
+}) {
+  const job = {
+    id: `HFSQL-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+    type: 'hfsql_report',
+    reportType: reportType || 'custom',
+    tableName: tableName || null,
+    sql: sql || null,
+    params: Array.isArray(params) ? params : [],
+    limit: Math.min(Math.max(Number(limit) || 100, 1), 5000),
+    requestedBy: requestedBy || 'unknown',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    startedAt: null,
+    completedAt: null,
+    error: null,
+    result: null,
+    csvUrl: null,
+    teamsConversationReference,
+    resultSentToTeams: false,
+    resultSentAt: null
+  };
+
+  hfsqlReportJobs.push(job);
+
+  return job;
+}
+
+function findHfsqlJob(jobId) {
+  return hfsqlReportJobs.find(job => job.id === jobId) || null;
+}
+
+function sanitizeCsvFilename(filename, fallback = 'rapport-hfsql.csv') {
+  const clean = String(filename || fallback)
+    .replace(/[^a-zA-Z0-9_.-]/g, '_')
+    .slice(0, 120);
+
+  return clean.toLowerCase().endsWith('.csv') ? clean : `${clean}.csv`;
+}
+
+function saveHfsqlCsvExport(job, csvBase64, filename) {
+  ensureExportsDir();
+
+  const safeFilename = sanitizeCsvFilename(
+    filename || `rapport-hfsql-${job.id}.csv`
+  );
+
+  const finalFilename = `${Date.now()}-${safeFilename}`;
+  const filePath = path.join(EXPORTS_DIR, finalFilename);
+
+  const buffer = Buffer.from(String(csvBase64 || ''), 'base64');
+
+  fs.writeFileSync(filePath, buffer);
+
+  return `${getPublicBaseUrl()}/exports/${encodeURIComponent(finalFilename)}`;
+}
+
+function formatHfsqlReportResultForTeams(job) {
+  const result = job.result || {};
+  const rowsPreview = Array.isArray(result.rowsPreview) ? result.rowsPreview : [];
+
+  const previewText = rowsPreview.length
+    ? rowsPreview.slice(0, HFSQL_REPORT_MAX_PREVIEW_ROWS).map((row, index) => {
+        const values = Object.entries(row || {})
+          .slice(0, 8)
+          .map(([key, value]) => `- ${key} : ${cleanTeamsTableValue(value, 80)}`)
+          .join('\n');
+
+        return `${index + 1}. Ligne\n${values}`;
+      }).join('\n\n')
+    : '- Aucun aperçu disponible.';
+
+  return [
+    `Rapport HFSQL terminé`,
+    ``,
+    `ID : ${job.id}`,
+    `Type : ${job.reportType || 'custom'}`,
+    job.tableName ? `Table : ${job.tableName}` : null,
+    `Statut : ${job.status}`,
+    `Total : ${result.count ?? 0} ligne(s)`,
+    ``,
+    `Résumé`,
+    result.summary || '- Rapport généré avec succès.',
+    ``,
+    `Aperçu`,
+    previewText,
+    ``,
+    job.csvUrl ? `Télécharger le CSV : ${job.csvUrl}` : `CSV : non disponible`
+  ].filter(Boolean).join('\n').slice(0, 12000);
+}
+
+async function sendHfsqlReportResultToTeams(job) {
+  if (!job || !job.teamsConversationReference || !teamsAdapter) {
+    return false;
+  }
+
+  if (job.resultSentToTeams) {
+    return true;
+  }
+
+  try {
+    try {
+      const { MicrosoftAppCredentials } = require('botframework-connector');
+
+      if (job.teamsConversationReference.serviceUrl) {
+        MicrosoftAppCredentials.trustServiceUrl(job.teamsConversationReference.serviceUrl);
+      }
+    } catch (trustError) {
+      console.warn('Could not trust Teams serviceUrl for HFSQL report:', trustError?.message || trustError);
+    }
+
+    const replyText = formatHfsqlReportResultForTeams(job);
+
+    await teamsAdapter.continueConversation(job.teamsConversationReference, async (turnContext) => {
+      await sendActivityWithMaterielMenu(turnContext, replyText);
+    });
+
+    job.resultSentToTeams = true;
+    job.resultSentAt = new Date().toISOString();
+
+    return true;
+  } catch (err) {
+    console.error('Failed to send HFSQL report result to Teams:', err);
+    return false;
+  }
 }
 
 /**
@@ -902,7 +1053,35 @@ function isCreateTicketRequest(text) {
   const normalized = normalizeTextForIntent(text);
   return /^(technicien|ticket|creer ticket|cree ticket|ouvrir ticket|ouvrir un ticket)$/i.test(normalized);
 }
+function parseHfsqlReportRequest(text) {
+  const normalized = normalizeTextForIntent(text);
 
+  if (
+    !normalized.includes('rapport hfsql') &&
+    !normalized.includes('export hfsql') &&
+    !normalized.includes('rapport base') &&
+    !normalized.includes('export base')
+  ) {
+    return null;
+  }
+
+  const raw = String(text || '').trim();
+
+  const tableMatch = raw.match(/\b(T_[A-Za-z0-9_]+)\b/i);
+  const limitMatch = raw.match(/\b(?:limit|limite)\s*[:=]?\s*(\d{1,5})\b/i);
+
+  if (!tableMatch) {
+    return {
+      error: 'missing_table'
+    };
+  }
+
+  return {
+    reportType: 'table_export',
+    tableName: tableMatch[1].toUpperCase(),
+    limit: limitMatch ? Number(limitMatch[1]) : 100
+  };
+}
 /**
  * Récupère l'historique de conversation Teams pour une clé de conversation
  * @param {string} key - La clé de conversation unique
@@ -2500,6 +2679,43 @@ if (isGreetingOnly(text)) {
   await next();
   return;
 }
+
+const hfsqlReportRequest = parseHfsqlReportRequest(text);
+
+if (hfsqlReportRequest) {
+  if (hfsqlReportRequest.error === 'missing_table') {
+    await context.sendActivity(
+      `Veuillez préciser la table HFSQL à exporter.\n\n` +
+      `Exemple : rapport hfsql T_SOCIETE_CLIENT limite 100`
+    );
+
+    await next();
+    return;
+  }
+
+  const conversationReference = TurnContext.getConversationReference(context.activity);
+
+  const job = createHfsqlReportJob({
+    reportType: hfsqlReportRequest.reportType,
+    tableName: hfsqlReportRequest.tableName,
+    limit: hfsqlReportRequest.limit,
+    requestedBy: userEmail || userName,
+    teamsConversationReference: conversationReference
+  });
+
+  const replyText =
+    `Demande de rapport HFSQL créée.\n\n` +
+    `ID : ${job.id}\n` +
+    `Table : ${job.tableName}\n` +
+    `Limite : ${job.limit}\n\n` +
+    `Le bridge HFSQL local va récupérer la demande et je vous enverrai le CSV ici dès que le rapport sera prêt.`;
+
+  saveTeamsConversationTurn(teamsConversationKey, text, replyText);
+  await context.sendActivity(replyText);
+
+  await next();
+  return;
+}
 // Message d'accueil quand l'utilisateur dit juste bonjour
 /*if (isGreetingOnly(text)) {
   const welcomeParts = [
@@ -2529,8 +2745,7 @@ if (isGreetingOnly(text)) {
   return;
 }*/
 
-const pendingAdminRequest = pendingAdminAuth.get(teamsConversationKey);
-
+const adminRequest = pendingAdminAuth.get(teamsConversationKey);
 if (pendingAdminRequest) {
   if (pendingAdminRequest.expiresAt < Date.now()) {
     pendingAdminAuth.delete(teamsConversationKey);
@@ -6282,6 +6497,9 @@ if (req.method === 'POST' && req.url === '/api/atera') {
 const server = http.createServer(async (req, res) => {
   console.log(`${req.method} ${req.url}`);
 
+
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const pathname = url.pathname;
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
 res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-KEY, X-Agent-Token');
@@ -6410,8 +6628,7 @@ res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-AP
   const handled = await handleApi(req, res);
   if (handled !== false) return;
 
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const pathname = url.pathname;
+
 
   if (pathname.endsWith('.html') || pathname.endsWith('.js') || pathname.endsWith('.css')) {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -6680,6 +6897,122 @@ res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-AP
       return sendJsonResponse(res, 500, { success: false, error: 'server_error' });
     }
   }
+  // HFSQL agent: get pending jobs
+if (req.method === 'GET' && pathname === '/api/hfsql/jobs/pending') {
+  if (!isValidHfsqlAgent(req)) {
+    return sendJsonResponse(res, 401, { error: 'unauthorized' });
+  }
+
+  const jobs = hfsqlReportJobs
+    .filter(job => job.status === 'pending')
+    .slice(0, 3)
+    .map(job => ({
+      id: job.id,
+      type: job.type,
+      reportType: job.reportType,
+      tableName: job.tableName,
+      sql: job.sql,
+      params: job.params,
+      limit: job.limit,
+      requestedBy: job.requestedBy,
+      createdAt: job.createdAt
+    }));
+
+  return sendJsonResponse(res, 200, { jobs });
+}
+
+// HFSQL agent: mark job as running
+if (req.method === 'POST' && pathname.match(/^\/api\/hfsql\/jobs\/[^/]+\/running$/)) {
+  if (!isValidHfsqlAgent(req)) {
+    return sendJsonResponse(res, 401, { error: 'unauthorized' });
+  }
+
+  const jobId = decodeURIComponent(pathname.split('/')[4]);
+  const job = findHfsqlJob(jobId);
+
+  if (!job) {
+    return sendJsonResponse(res, 404, { error: 'job_not_found' });
+  }
+
+  job.status = 'running';
+  job.startedAt = new Date().toISOString();
+
+  return sendJsonResponse(res, 200, {
+    success: true,
+    jobId: job.id,
+    status: job.status
+  });
+}
+
+// HFSQL agent: post result
+if (req.method === 'POST' && pathname.match(/^\/api\/hfsql\/jobs\/[^/]+\/result$/)) {
+  if (!isValidHfsqlAgent(req)) {
+    return sendJsonResponse(res, 401, { error: 'unauthorized' });
+  }
+
+  try {
+    const jobId = decodeURIComponent(pathname.split('/')[4]);
+    const job = findHfsqlJob(jobId);
+
+    if (!job) {
+      return sendJsonResponse(res, 404, { error: 'job_not_found' });
+    }
+
+    const body = await readJson(req);
+
+    job.status = body.status === 'failed' ? 'failed' : 'completed';
+    job.completedAt = new Date().toISOString();
+    job.error = body.error || null;
+
+    if (body.csvBase64) {
+      job.csvUrl = saveHfsqlCsvExport(job, body.csvBase64, body.filename);
+    }
+
+    job.result = {
+      summary: body.summary || '',
+      count: body.count || 0,
+      rowsPreview: Array.isArray(body.rowsPreview) ? body.rowsPreview : [],
+      filename: body.filename || null
+    };
+
+    if (job.status === 'failed') {
+      job.result.summary = body.error || 'Le rapport HFSQL a échoué.';
+    }
+
+    await sendHfsqlReportResultToTeams(job);
+
+    return sendJsonResponse(res, 200, {
+      success: true,
+      jobId: job.id,
+      status: job.status,
+      csvUrl: job.csvUrl,
+      resultSentToTeams: job.resultSentToTeams
+    });
+  } catch (error) {
+    console.error('HFSQL job result failed:', error);
+
+    return sendJsonResponse(res, 500, {
+      error: 'hfsql_result_failed',
+      details: error.message || String(error)
+    });
+  }
+}
+
+// HFSQL agent: get one job status
+if (req.method === 'GET' && pathname.match(/^\/api\/hfsql\/jobs\/[^/]+$/)) {
+  if (!isValidHfsqlAgent(req)) {
+    return sendJsonResponse(res, 401, { error: 'unauthorized' });
+  }
+
+  const jobId = decodeURIComponent(pathname.split('/')[4]);
+  const job = findHfsqlJob(jobId);
+
+  if (!job) {
+    return sendJsonResponse(res, 404, { error: 'job_not_found' });
+  }
+
+  return sendJsonResponse(res, 200, { job });
+}
 // Download CSV exports
 if (req.method === 'GET' && pathname.startsWith('/exports/')) {
   const filename = decodeURIComponent(pathname.replace('/exports/', ''));
