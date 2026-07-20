@@ -7336,7 +7336,6 @@ if (req.method === 'GET' && pathname.match(/^\/api\/hfsql\/jobs\/[^/]+$/)) {
 
   return sendJsonResponse(res, 200, { job });
 }
-
 // Download CSV and PDF exports
 if (req.method === 'GET' && pathname.startsWith('/exports/')) {
   const filename = decodeURIComponent(
@@ -7388,37 +7387,6 @@ if (req.method === 'GET' && pathname.startsWith('/exports/')) {
 
     'Content-Length': fs.statSync(filePath).size,
     'Cache-Control': 'private, max-age=3600'
-  });
-
-  fs.createReadStream(filePath).pipe(res);
-  return;
-}
-  const filename = decodeURIComponent(pathname.replace('/exports/', ''));
-
-  if (!/^[a-zA-Z0-9_.-]+\.csv$/.test(filename)) {
-    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Nom de fichier invalide.');
-    return;
-  }
-
-  const filePath = path.join(EXPORTS_DIR, filename);
-
-  if (!filePath.startsWith(EXPORTS_DIR)) {
-    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Accès interdit.');
-    return;
-  }
-
-  if (!fs.existsSync(filePath)) {
-    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Fichier introuvable.');
-    return;
-  }
-
-  res.writeHead(200, {
-    'Content-Type': 'text/csv; charset=utf-8',
-    'Content-Disposition': `attachment; filename="${filename}"`,
-    'Cache-Control': 'no-store'
   });
 
   fs.createReadStream(filePath).pipe(res);
