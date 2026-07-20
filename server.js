@@ -1243,8 +1243,8 @@ async function interpretPowerBiPdfPrompt(
 `      "showDetailedTable": true,\n` +
 `      "maximumChartItems": 15,\n` +
 `      "maximumTableRows": 100\n` +
-`    },\n`
-              `    "table": "TABLE",\n` +
+`    },\n` +
+`    "table": "TABLE",\n` +
               `    "groupBy": ["COLONNE"],\n` +
               `    "metrics": [\n` +
               `      {\n` +
