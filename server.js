@@ -139,22 +139,33 @@ function isValidHfsqlAgent(req) {
 }
 
 function createHfsqlReportJob({
+  type,
   reportType,
   tableName,
   sql,
   params,
   limit,
+  prompt,
+  outputFormat,
+  reportDefinition,
   requestedBy,
   teamsConversationReference
 }) {
   const job = {
     id: `HFSQL-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
-    type: 'hfsql_report',
+    type: type || 'hfsql_report',
     reportType: reportType || 'custom',
     tableName: tableName || null,
     sql: sql || null,
     params: Array.isArray(params) ? params : [],
     limit: Math.min(Math.max(Number(limit) || 100, 1), 5000),
+    prompt: String(prompt || '').trim(),
+outputFormat: outputFormat || 'csv',
+reportDefinition:
+  reportDefinition &&
+  typeof reportDefinition === 'object'
+    ? reportDefinition
+    : null,
     requestedBy: requestedBy || 'unknown',
     status: 'pending',
     createdAt: new Date().toISOString(),
@@ -175,6 +186,54 @@ function createHfsqlReportJob({
 
 function findHfsqlJob(jobId) {
   return hfsqlReportJobs.find(job => job.id === jobId) || null;
+}
+
+function sanitizePdfFilename(
+  filename,
+  fallback = 'rapport-powerbi.pdf'
+) {
+  const clean = String(filename || fallback)
+    .replace(/[^a-zA-Z0-9_.-]/g, '_')
+    .slice(0, 120);
+
+  return clean.toLowerCase().endsWith('.pdf')
+    ? clean
+    : `${clean}.pdf`;
+}
+
+function saveHfsqlPdfExport(
+  job,
+  fileBase64,
+  filename
+) {
+  ensureExportsDir();
+
+  const safeFilename = sanitizePdfFilename(
+    filename ||
+      `rapport-powerbi-${job.id}.pdf`
+  );
+
+  const finalFilename =
+    `${Date.now()}-${safeFilename}`;
+
+  const filePath =
+    path.join(EXPORTS_DIR, finalFilename);
+
+  const buffer = Buffer.from(
+    String(fileBase64 || ''),
+    'base64'
+  );
+
+  if (!buffer.length) {
+    throw new Error('PDF reçu vide.');
+  }
+
+  fs.writeFileSync(filePath, buffer);
+
+  return (
+    `${getPublicBaseUrl()}/exports/` +
+    encodeURIComponent(finalFilename)
+  );
 }
 
 function sanitizeCsvFilename(filename, fallback = 'rapport-hfsql.csv') {
@@ -204,6 +263,11 @@ function saveHfsqlCsvExport(job, csvBase64, filename) {
 
 function formatHfsqlReportResultForTeams(job) {
   const result = job.result || {};
+  const downloadSection = job.pdfUrl
+  ? `\n\n📊 Télécharger le rapport Power BI PDF :\n${job.pdfUrl}`
+  : job.csvUrl
+    ? `\n\n📥 Télécharger le CSV :\n${job.csvUrl}`
+    : '';
   const rowsPreview = Array.isArray(result.rowsPreview) ? result.rowsPreview : [];
 
   const previewText = rowsPreview.length
@@ -1053,6 +1117,149 @@ function isCreateTicketRequest(text) {
   const normalized = normalizeTextForIntent(text);
   return /^(technicien|ticket|creer ticket|cree ticket|ouvrir ticket|ouvrir un ticket)$/i.test(normalized);
 }
+
+async function interpretPowerBiPdfPrompt(
+  userPrompt,
+  allowedTables = []
+) {
+  if (!process.env.MISTRAL_API_KEY) {
+    throw new Error(
+      'MISTRAL_API_KEY est absente sur Render.'
+    );
+  }
+
+  const response = await fetch(
+    'https://api.mistral.ai/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization:
+          `Bearer ${process.env.MISTRAL_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'mistral-small-latest',
+        temperature: 0,
+        response_format: {
+          type: 'json_object'
+        },
+        messages: [
+          {
+            role: 'system',
+            content:
+              `Tu convertis une demande utilisateur en définition ` +
+              `de rapport Power BI PDF.\n\n` +
+
+              `Retourne uniquement un JSON valide.\n` +
+              `Ne retourne jamais de SQL.\n` +
+              `N'invente pas de table.\n` +
+              `Utilise uniquement une table de cette liste :\n` +
+              `${allowedTables.join(', ')}\n\n` +
+
+              `Agrégations autorisées : COUNT, SUM, AVG, MIN, MAX.\n` +
+              `Visuels autorisés : kpi, bar, horizontalBar, table.\n\n` +
+
+              `Format obligatoire :\n` +
+              `{\n` +
+              `  "needsClarification": false,\n` +
+              `  "reportDefinition": {\n` +
+              `    "title": "Titre",\n` +
+              `    "table": "TABLE",\n` +
+              `    "groupBy": ["COLONNE"],\n` +
+              `    "metrics": [\n` +
+              `      {\n` +
+              `        "function": "COUNT",\n` +
+              `        "column": "*",\n` +
+              `        "alias": "TOTAL"\n` +
+              `      }\n` +
+              `    ],\n` +
+              `    "orderBy": [\n` +
+              `      {\n` +
+              `        "column": "TOTAL",\n` +
+              `        "direction": "DESC"\n` +
+              `      }\n` +
+              `    ],\n` +
+              `    "visuals": [\n` +
+              `      {\n` +
+              `        "type": "kpi",\n` +
+              `        "title": "Total",\n` +
+              `        "metric": "TOTAL"\n` +
+              `      },\n` +
+              `      {\n` +
+              `        "type": "bar",\n` +
+              `        "title": "Répartition",\n` +
+              `        "category": "COLONNE",\n` +
+              `        "value": "TOTAL"\n` +
+              `      },\n` +
+              `      {\n` +
+              `        "type": "table",\n` +
+              `        "title": "Détail",\n` +
+              `        "columns": ["COLONNE", "TOTAL"]\n` +
+              `      }\n` +
+              `    ]\n` +
+              `  }\n` +
+              `}\n\n` +
+
+              `Si la table ou le regroupement est absent, retourne :\n` +
+              `{\n` +
+              `  "needsClarification": true,\n` +
+              `  "question": "Question courte en français"\n` +
+              `}`
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ]
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    throw new Error(
+      `Mistral ${response.status}: ${errorText.slice(0, 500)}`
+    );
+  }
+
+  const payload = await response.json();
+
+  const content =
+    payload?.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error(
+      'Mistral n’a retourné aucune définition.'
+    );
+  }
+
+  const parsed =
+    typeof content === 'string'
+      ? JSON.parse(
+          content
+            .replace(/```json/gi, '')
+            .replace(/```/g, '')
+            .trim()
+        )
+      : content;
+
+  return parsed;
+}
+
+function isPowerBiPdfPrompt(text) {
+  const normalized = String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  return (
+    /\b(power\s*bi|tableau de bord|dashboard)\b/.test(normalized) &&
+    /\b(pdf|rapport)\b/.test(normalized)
+  );
+}
+
 function parseHfsqlReportRequest(text) {
   const normalized = normalizeTextForIntent(text);
 
@@ -2679,6 +2886,74 @@ if (isGreetingOnly(text)) {
   await next();
   return;
 }
+if (isPowerBiPdfPrompt(text)) {
+  try {
+    await context.sendActivity(
+      'Analyse de votre demande de rapport Power BI…'
+    );
+
+    const interpreted =
+      await interpretPowerBiPdfPrompt(
+        text,
+        POWERBI_ALLOWED_TABLES
+      );
+
+    if (interpreted.needsClarification) {
+      await context.sendActivity(
+        interpreted.question ||
+          'Pouvez-vous préciser la table et la colonne à analyser ?'
+      );
+
+      await next();
+      return;
+    }
+
+    const conversationReference =
+      TurnContext.getConversationReference(
+        context.activity
+      );
+
+    const definition =
+      interpreted.reportDefinition;
+
+    const job = createHfsqlReportJob({
+      type: 'powerbi_pdf_report',
+      reportType: 'powerbi_pdf',
+      tableName: definition.table,
+      prompt: text,
+      outputFormat: 'pdf',
+      reportDefinition: definition,
+      requestedBy:
+        userEmail || userName,
+      teamsConversationReference:
+        conversationReference
+    });
+
+    await context.sendActivity(
+      `📊 Rapport Power BI PDF créé.\n\n` +
+      `ID : ${job.id}\n` +
+      `Titre : ${definition.title}\n` +
+      `Table : ${definition.table}\n\n` +
+      `Le bridge HFSQL local va générer le document.`
+    );
+
+    await next();
+    return;
+  } catch (error) {
+    console.error(
+      'Power BI PDF request failed:',
+      error
+    );
+
+    await context.sendActivity(
+      `Impossible de préparer le rapport : ` +
+      `${error.message || String(error)}`
+    );
+
+    await next();
+    return;
+  }
+}
 
 const hfsqlReportRequest = parseHfsqlReportRequest(text);
 
@@ -2746,8 +3021,8 @@ if (hfsqlReportRequest) {
 }*/
 
 const adminRequest = pendingAdminAuth.get(teamsConversationKey);
-if (pendingAdminRequest) {
-  if (pendingAdminRequest.expiresAt < Date.now()) {
+if (adminRequest) {
+  if (adminRequest.expiresAt < Date.now()) {
     pendingAdminAuth.delete(teamsConversationKey);
 
     await context.sendActivity(
@@ -2775,14 +3050,13 @@ if (pendingAdminRequest) {
   unlockAdminForConversation(teamsConversationKey);
 
   pendingDiagnostics.set(teamsConversationKey, {
-    ...pendingAdminRequest.diagnosticRequest,
-    deviceId: pendingAdminRequest.targetDeviceId
+...adminRequest.diagnosticRequest,
+deviceId: adminRequest.targetDeviceId
   });
 
   await context.sendActivity(
     `Mot de passe admin validé.\n\n` +
-    `Je peux lancer un ${pendingAdminRequest.diagnosticRequest.label} sur le poste ${pendingAdminRequest.targetDeviceId}.\n\n` +
-    `Confirmez-vous ? Répondez "oui".`
+`Je peux lancer un ${adminRequest.diagnosticRequest.label} sur le poste ${adminRequest.targetDeviceId}.\n\n` +    `Confirmez-vous ? Répondez "oui".`
   );
 
   await next();
@@ -6906,17 +7180,20 @@ if (req.method === 'GET' && pathname === '/api/hfsql/jobs/pending') {
   const jobs = hfsqlReportJobs
     .filter(job => job.status === 'pending')
     .slice(0, 3)
-    .map(job => ({
-      id: job.id,
-      type: job.type,
-      reportType: job.reportType,
-      tableName: job.tableName,
-      sql: job.sql,
-      params: job.params,
-      limit: job.limit,
-      requestedBy: job.requestedBy,
-      createdAt: job.createdAt
-    }));
+   .map(job => ({
+  id: job.id,
+  type: job.type,
+  reportType: job.reportType,
+  tableName: job.tableName,
+  sql: job.sql,
+  params: job.params,
+  limit: job.limit,
+  prompt: job.prompt,
+  outputFormat: job.outputFormat,
+  reportDefinition: job.reportDefinition,
+  requestedBy: job.requestedBy,
+  createdAt: job.createdAt
+}));
 
   return sendJsonResponse(res, 200, { jobs });
 }
@@ -6967,13 +7244,26 @@ if (req.method === 'POST' && pathname.match(/^\/api\/hfsql\/jobs\/[^/]+\/result$
     if (body.csvBase64) {
       job.csvUrl = saveHfsqlCsvExport(job, body.csvBase64, body.filename);
     }
-
-    job.result = {
-      summary: body.summary || '',
-      count: body.count || 0,
-      rowsPreview: Array.isArray(body.rowsPreview) ? body.rowsPreview : [],
-      filename: body.filename || null
-    };
+if (body.fileBase64) {
+  job.pdfUrl = saveHfsqlPdfExport(
+    job,
+    body.fileBase64,
+    body.filename
+  );
+}
+job.result = {
+  summary: body.summary || '',
+  count: body.count || 0,
+  rowsPreview:
+    Array.isArray(body.rowsPreview)
+      ? body.rowsPreview
+      : [],
+  filename: body.filename || null,
+  outputFormat:
+    body.outputFormat ||
+    job.outputFormat ||
+    'csv'
+};
 
     if (job.status === 'failed') {
       job.result.summary = body.error || 'Le rapport HFSQL a échoué.';
@@ -6986,6 +7276,7 @@ if (req.method === 'POST' && pathname.match(/^\/api\/hfsql\/jobs\/[^/]+\/result$
       jobId: job.id,
       status: job.status,
       csvUrl: job.csvUrl,
+      pdfUrl: job.pdfUrl || null,
       resultSentToTeams: job.resultSentToTeams
     });
   } catch (error) {
