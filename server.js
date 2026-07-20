@@ -192,8 +192,9 @@ reportDefinition:
     completedAt: null,
     error: null,
     result: null,
-    csvUrl: null,
-    teamsConversationReference,
+csvUrl: null,
+pdfUrl: null,
+teamsConversationReference,
     resultSentToTeams: false,
     resultSentAt: null
   };
@@ -282,23 +283,32 @@ function saveHfsqlCsvExport(job, csvBase64, filename) {
 
 function formatHfsqlReportResultForTeams(job) {
   const result = job.result || {};
-  const downloadSection = job.pdfUrl
-  ? `\n\n📊 Télécharger le rapport Power BI PDF :\n${job.pdfUrl}`
-  : job.csvUrl
-    ? `\n\n📥 Télécharger le CSV :\n${job.csvUrl}`
-    : '';
-  const rowsPreview = Array.isArray(result.rowsPreview) ? result.rowsPreview : [];
+
+  const rowsPreview = Array.isArray(result.rowsPreview)
+    ? result.rowsPreview
+    : [];
 
   const previewText = rowsPreview.length
-    ? rowsPreview.slice(0, HFSQL_REPORT_MAX_PREVIEW_ROWS).map((row, index) => {
-        const values = Object.entries(row || {})
-          .slice(0, 8)
-          .map(([key, value]) => `- ${key} : ${cleanTeamsTableValue(value, 80)}`)
-          .join('\n');
+    ? rowsPreview
+        .slice(0, HFSQL_REPORT_MAX_PREVIEW_ROWS)
+        .map((row, index) => {
+          const values = Object.entries(row || {})
+            .slice(0, 8)
+            .map(([key, value]) => {
+              return `- ${key} : ${cleanTeamsTableValue(value, 80)}`;
+            })
+            .join('\n');
 
-        return `${index + 1}. Ligne\n${values}`;
-      }).join('\n\n')
+          return `${index + 1}. Ligne\n${values}`;
+        })
+        .join('\n\n')
     : '- Aucun aperçu disponible.';
+
+  const downloadLine = job.pdfUrl
+    ? `📊 Télécharger le rapport Power BI PDF : ${job.pdfUrl}`
+    : job.csvUrl
+      ? `📥 Télécharger le CSV : ${job.csvUrl}`
+      : `Fichier : non disponible`;
 
   return [
     `Rapport HFSQL terminé`,
@@ -315,8 +325,11 @@ function formatHfsqlReportResultForTeams(job) {
     `Aperçu`,
     previewText,
     ``,
-    job.csvUrl ? `Télécharger le CSV : ${job.csvUrl}` : `CSV : non disponible`
-  ].filter(Boolean).join('\n').slice(0, 12000);
+    downloadLine
+  ]
+    .filter(value => value !== null && value !== undefined)
+    .join('\n')
+    .slice(0, 12000);
 }
 
 async function sendHfsqlReportResultToTeams(job) {
