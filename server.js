@@ -29,6 +29,25 @@ const pendingMaterielLookup = new Map(); // Recherches matériel/inventaire en a
 
 const hfsqlReportJobs = [];
 const HFSQL_REPORT_MAX_PREVIEW_ROWS = 20;
+
+const POWERBI_ALLOWED_TABLES = [
+  'T_SOCIETE_CLIENT',
+  'T_MARQUE',
+  'T_SWAP',
+  'T_SousOffre_care',
+  'T_COMMANDE_ATTENTE',
+'T_CONTRAT_SWAP',
+'T_MODELE',
+'T_offre_care',
+'T_PARAMETRE',
+'T_REVENDEUR',
+'T_REVENDEUR_SITE',
+'T_TYPE_DEGAT',
+'T_TYPE_GARANTIE',
+'T_TYPE_PERFORMANCE',
+'Type_MDM'
+];
+
 let d4bApiTokenCache = {
   token: null, // Token JWT pour l'API D4B
   expiresAt: 0 // Timestamp d'expiration du token
