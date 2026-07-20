@@ -7336,8 +7336,63 @@ if (req.method === 'GET' && pathname.match(/^\/api\/hfsql\/jobs\/[^/]+$/)) {
 
   return sendJsonResponse(res, 200, { job });
 }
-// Download CSV exports
+
+// Download CSV and PDF exports
 if (req.method === 'GET' && pathname.startsWith('/exports/')) {
+  const filename = decodeURIComponent(
+    pathname.slice('/exports/'.length)
+  );
+
+  // Allow only safe CSV and PDF filenames.
+  if (!/^[a-zA-Z0-9_.-]+\.(csv|pdf)$/i.test(filename)) {
+    res.writeHead(400, {
+      'Content-Type': 'text/plain; charset=utf-8'
+    });
+    res.end('Nom de fichier invalide.');
+    return;
+  }
+
+  const filePath = path.resolve(EXPORTS_DIR, filename);
+  const exportsRoot = path.resolve(EXPORTS_DIR);
+
+  // Prevent directory traversal.
+  if (
+    filePath !== exportsRoot &&
+    !filePath.startsWith(exportsRoot + path.sep)
+  ) {
+    res.writeHead(403, {
+      'Content-Type': 'text/plain; charset=utf-8'
+    });
+    res.end('Accès interdit.');
+    return;
+  }
+
+  if (!fs.existsSync(filePath)) {
+    res.writeHead(404, {
+      'Content-Type': 'text/plain; charset=utf-8'
+    });
+    res.end('Fichier introuvable.');
+    return;
+  }
+
+  const isPdf = filename.toLowerCase().endsWith('.pdf');
+
+  res.writeHead(200, {
+    'Content-Type': isPdf
+      ? 'application/pdf'
+      : 'text/csv; charset=utf-8',
+
+    'Content-Disposition': isPdf
+      ? `inline; filename="${filename}"`
+      : `attachment; filename="${filename}"`,
+
+    'Content-Length': fs.statSync(filePath).size,
+    'Cache-Control': 'private, max-age=3600'
+  });
+
+  fs.createReadStream(filePath).pipe(res);
+  return;
+}
   const filename = decodeURIComponent(pathname.replace('/exports/', ''));
 
   if (!/^[a-zA-Z0-9_.-]+\.csv$/.test(filename)) {
